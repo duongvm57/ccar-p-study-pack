@@ -199,8 +199,8 @@ const answerPatternRows = [
 
 const speedPlan = [
   ["0–10 phút", "Đọc cheat-sheet 8 topic và các mẹo làm bài để biết khung tư duy trước. Chưa cần đọc từng câu."],
-  ["10–25 phút", "Làm flashcard theo topic. Nếu trong 2 giây không nhớ trigger thì bấm “ôn lại” ngay."],
-  ["25–35 phút", "Mở tab Yes/No và dropdown. Học thuộc mapping/sequence vì phần này cố định và dễ lấy điểm nhanh."],
+  ["10–25 phút", "Làm Recognition drill tab “Nhớ cụm”. Nếu trong 2 giây không nhớ answer phrase thì bấm “Chưa khớp” ngay."],
+  ["25–35 phút", "Mở tab “Quét option” để luyện match answer phrase vào MCQ; sau đó học Yes/No và dropdown vì sequence/mapping cố định."],
   ["35–45 phút", "Quét bảng tra nhanh: chỉ đọc câu đã bấm “ôn lại” và các câu select-two."],
   ["Trước khi thi", "Khi phân vân, ưu tiên theo thứ tự: điều kiện bắt buộc → quyền tối thiểu → đo trước khi chạy → chặn trước khi lộ dữ liệu → con người giữ quyết định rủi ro cao."]
 ];
@@ -535,6 +535,321 @@ function TopicCheatSheet() {
   </div>;
 }
 
+
+const recognitionDomainTerms = [
+  "core contracts", "design cycle", "outbound tool", "prompt caching", "managed configuration", "project scope", "user scope", "human oversight", "service-level objectives", "error budget", "retrieval-augmented generation", "technical rationale", "target metric", "first-run permission", "minimal reproduction", "Claude Skill", "top-k", "source-supported content", "Architecture Decision Record", "production database", "progressive tool discovery", "least privilege", "untrusted data", "role-restricted content", "representative workload", "direct API", "output validation", "alternatives considered", "data exfiltration", "transaction size", "managed agent", "MCP server", "prompt injection", "sampling strategy", "Zero Data Retention", "reference set", "silent quality drift", "risk-stratified sampling", "correlation identifiers", "controlled experiment", "primary success metric", "data-subject-rights", "stakeholder", "runbook", "rollback", "audit", "HIPAA", "GDPR", "BAA", "DPA", "SLA", "latency", "cost", "regression", "evaluation", "before", "after", "exact identifier", "paraphrase", "structured query", "dense", "sparse", "fixed steps", "high-impact", "irreversible", "blast radius", "scope creep", "team-shared", "security-critical", "cannot override", "repeated static prefix", "tool search", "subagent", "procedural knowledge", "workflow", "deterministic", "model version", "human review", "compliance", "privacy", "security"
+];
+const scanStopwords = new Set(["you", "your", "yours", "are", "and", "the", "a", "an", "of", "to", "in", "on", "for", "with", "without", "that", "this", "these", "those", "which", "what", "when", "where", "how", "who", "whose", "should", "would", "could", "must", "can", "cannot", "into", "from", "by", "as", "at", "is", "be", "been", "being", "has", "have", "had", "their", "they", "them", "it", "its", "each", "all", "any", "every", "only", "than", "then", "rather", "continue", "continues", "after", "before", "while", "during", "across", "within", "used", "using", "use", "new", "needs", "need", "wants", "want", "select", "choose", "correct", "answer", "solution", "complete", "steps", "team", "deployment", "architect", "claude-based", "system", "systems", "workflow", "organization", "reviewing", "evaluating", "designing", "supporting", "compiling", "identifying", "preparing", "building", "integrating", "assessing", "defining", "responding", "documenting", "classifying", "present", "presenting", "peer", "proposed", "currently", "must", "already", "first", "best", "most", "directly", "generally", "appropriate", "statement", "statements", "otherwise", "true", "false", "yes", "no", "claim", "claims", "option", "options", "question", "signal", "signals", "factor", "factors", "characteristic", "characteristics", "practice", "practices", "step", "steps", "completed", "indicate", "indicates", "represent", "represents", "belong", "belongs", "following", "two", "three", "four", "five"]);
+function answerMemoryPhrase(q) {
+  return (q.memory || "").replace(/^Nhớ cụm đáp án:\s*/, "").trim();
+}
+const answerScanStopwords = new Set(["the", "a", "an", "of", "to", "in", "on", "for", "with", "without", "that", "this", "these", "those", "which", "what", "when", "where", "how", "who", "whose", "should", "would", "could", "must", "can", "into", "from", "by", "as", "at", "is", "be", "been", "being", "has", "have", "had", "their", "they", "them", "it", "its", "each", "all", "any", "every", "only", "than", "then", "after", "before", "while", "during", "across", "within", "used", "using", "use", "and", "or", "not", "no", "yes", "if", "otherwise", "via", "per"]);
+function answerWords(text) {
+  return (text || "").split(/\s+/).map(raw => {
+    const display = raw.replace(/^[\s"“”‘’'()\[\]{}<>.,;:!?]+|[\s"“”‘’'()\[\]{}<>.,;:!?]+$/g, "");
+    return { display, lower: display.toLowerCase() };
+  }).filter(x => x.lower);
+}
+function significantAnswerWord(w) {
+  return w && w.length > 2 && !answerScanStopwords.has(w);
+}
+function distinctiveOptionPhrase(correctText, wrongTexts) {
+  const correctWords = answerWords(correctText);
+  const wrongWords = wrongTexts.flatMap(answerWords);
+  const wrongSet = new Set(wrongWords.map(x => x.lower));
+  const wrongJoined = wrongWords.map(x => x.lower).join(" ");
+  const uniquePositions = correctWords.map((x, i) => significantAnswerWord(x.lower) && !wrongSet.has(x.lower) ? i : -1).filter(i => i >= 0);
+  const positions = uniquePositions.length ? uniquePositions : correctWords.map((x, i) => significantAnswerWord(x.lower) ? i : -1).filter(i => i >= 0);
+  const candidates = [];
+  positions.forEach(pos => {
+    [5, 4, 3, 2].forEach(len => {
+      for (let start = pos - 2; start <= pos; start++) {
+        if (start < 0 || start + len > correctWords.length) continue;
+        const piece = correctWords.slice(start, start + len);
+        const lowers = piece.map(x => x.lower);
+        if (!significantAnswerWord(lowers[0]) || !significantAnswerWord(lowers[len - 1])) continue;
+        const joined = lowers.join(" ");
+        if (wrongJoined.includes(joined)) continue;
+        const uniqueCount = lowers.filter(w => significantAnswerWord(w) && !wrongSet.has(w)).length;
+        const sigCount = lowers.filter(significantAnswerWord).length;
+        let score = uniqueCount * 4 + sigCount * 1.5 + len * 0.4;
+        if (lowers.some(w => w.includes("-"))) score += 1;
+        if (lowers.some(w => /\d/.test(w))) score += 1;
+        if (lowers.some(w => ["cannot", "must", "only", "before", "after", "without", "not"].includes(w))) score += 1.5;
+        candidates.push({ score, text: piece.map(x => x.display).join(" ") });
+      }
+    });
+  });
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates.length) return candidates[0].text;
+  return correctWords.slice(0, 6).map(x => x.display).join(" ");
+}
+function answerScanPhrase(q) {
+  if (q.type === "yesno") return q.answerLabel + " — " + answerMemoryPhrase(q);
+  if (q.type === "dropdown") return q.correctSummary || answerMemoryPhrase(q);
+  if (!q.options) return answerMemoryPhrase(q);
+  const wrongTexts = q.options.filter(o => !o.correct).map(o => o.text);
+  const phrases = q.options.filter(o => o.correct).map(o => distinctiveOptionPhrase(o.text, wrongTexts)).filter(Boolean);
+  return Array.from(new Set(phrases)).join(" + ") || answerMemoryPhrase(q);
+}
+function scanSourceText(q) {
+  const stem = q.stem || q.cue || "";
+  const sentences = stem.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [stem];
+  const kept = sentences.filter((sentence, index) => {
+    const start = sentence.trim().toLowerCase();
+    const boilerplate = /^(which|what|for each|select|choose|complete|how)\b/.test(start);
+    return !(boilerplate && index === sentences.length - 1);
+  });
+  return kept.join(" ") || stem;
+}
+function scanWords(text) {
+  return (text || "").replace(/[“”"‘’'()\[\]{}:;.!?]/g, " ").split(/\s+/).filter(Boolean).map(display => {
+    const cleaned = display.replace(/^,+|,+$/g, "");
+    return { display: cleaned, lower: cleaned.toLowerCase() };
+  }).filter(x => x.lower);
+}
+function significantScanWord(w) {
+  const numeric = /^[\d,]+$/.test(w) && w.replace(/\D/g, "").length >= 2;
+  return Boolean(w) && (numeric || (w.length > 3 && !scanStopwords.has(w) && !/^[\d,]+$/.test(w)));
+}
+const scanCorpusWordCounts = {};
+questions.forEach(q => {
+  Array.from(new Set(scanWords(scanSourceText(q)).map(x => x.lower))).forEach(w => {
+    scanCorpusWordCounts[w] = (scanCorpusWordCounts[w] || 0) + 1;
+  });
+});
+function scanTerms(q) {
+  const cue = scanSourceText(q);
+  const lowerCue = cue.toLowerCase();
+  const sentences = cue.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cue];
+  const candidates = [];
+  function addCandidate(text, score) {
+    const clean = (text || "").trim();
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (!candidates.some(c => c.key === key)) candidates.push({ key, text: clean, score });
+  }
+  vocabulary.forEach(v => {
+    const term = v[0].toLowerCase();
+    if (lowerCue.includes(term)) addCandidate(v[0], (v[0].includes(" ") ? 18 : 8) + Math.min(v[0].length, 24) / 5);
+  });
+  recognitionDomainTerms.forEach(term => {
+    if (lowerCue.includes(term.toLowerCase())) addCandidate(term, (term.includes(" ") ? 17 : 7) + Math.min(term.length, 28) / 5);
+  });
+  sentences.forEach(sentence => {
+    const words = scanWords(sentence);
+    for (let i = 0; i < words.length; i++) {
+      [3, 2].forEach(len => {
+        if (i + len > words.length) return;
+        const piece = words.slice(i, i + len).map(x => x.lower);
+        const sigCount = piece.filter(significantScanWord).length;
+        if (significantScanWord(piece[0]) && significantScanWord(piece[len - 1]) && ((len === 2 && sigCount >= 1) || (len === 3 && sigCount >= 2))) {
+          const text = words.slice(i, i + len).map(x => x.display).join(" ");
+          const joined = piece.join(" ");
+          const rarity = piece.reduce((sum, w) => sum + (significantScanWord(w) ? 1 / Math.sqrt(scanCorpusWordCounts[w] || 1) : 0), 0);
+          let score = sigCount * 3 + (len - 2) + piece.join("").length / 25 + rarity * 4;
+          if (piece.some(w => /^[\d,]+$/.test(w))) score += 2;
+          if (recognitionDomainTerms.some(term => term.toLowerCase().includes(joined) || joined.includes(term.toLowerCase()))) score += 5;
+          if (vocabulary.some(v => joined.includes(v[0].toLowerCase()))) score += 5;
+          if (joined.includes("-")) score += 1;
+          addCandidate(text, score);
+        }
+      });
+    }
+  });
+  candidates.sort((a, b) => b.score - a.score);
+  const selected = [];
+  candidates.forEach(c => {
+    if (selected.length >= 3) return;
+    const cWords = c.key.split(/\s+/).filter(significantScanWord);
+    const overlaps = selected.some(sel => {
+      const sWords = sel.key.split(/\s+/).filter(significantScanWord);
+      return cWords.length && sWords.length && cWords.some(w => sWords.includes(w));
+    });
+    if (!overlaps) selected.push(c);
+  });
+  const singles = Array.from(new Set(scanWords(cue).map(x => x.lower).filter(significantScanWord)));
+  singles.sort((a, b) => (1 / Math.sqrt(scanCorpusWordCounts[b] || 1)) - (1 / Math.sqrt(scanCorpusWordCounts[a] || 1)));
+  let si = 0;
+  while (selected.length < 3 && si < singles.length) {
+    const word = singles[si++];
+    if (!selected.some(sel => sel.key.includes(word))) selected.push({ key: word, text: word, score: 0 });
+  }
+  return selected.slice(0, 3).map(x => x.text);
+}
+const recognitionRows = questions.map(q => ({ q, scan: scanTerms(q), phrase: answerMemoryPhrase(q), answerScan: answerScanPhrase(q) }));
+
+function RecognitionChoiceCard({ q, scan, phrase, answerScan }) {
+  const [revealed, setRevealed] = useState(false);
+  const [selectedMcq, setSelectedMcq] = useState([]);
+  const correctLetters = q.options ? q.options.filter(o => o.correct).map(o => o.letter) : [];
+  const multi = correctLetters.length > 1;
+  const result = !revealed ? null : sameLetters(selectedMcq, correctLetters);
+  function chooseMcq(letter) {
+    if (revealed) return;
+    if (multi) setSelectedMcq(selectedMcq.includes(letter) ? selectedMcq.filter(x => x !== letter) : selectedMcq.concat(letter));
+    else setSelectedMcq([letter]);
+  }
+  return <Card className="mt-4"><CardContent><CardBody>
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="purple">Q{q.n}</Badge>
+      <Badge>{q.topic}</Badge>
+      <Badge variant="blue">{multi ? "Chọn đủ " + correctLetters.length + " options" : "Chọn 1 option"}</Badge>
+    </div>
+    <div className="mt-4 rounded-lg border border-orange bg-tint-orange p-3">
+      <Text size={12} weight="semibold" className="text-primary">Scan đúng các từ này trong đề</Text>
+      <div className="mt-2 flex flex-wrap gap-2">{scan.map((term, i) => <Badge key={i} variant="orange">{term}</Badge>)}</div>
+      <div className="mt-3"><GlossedText text={q.cue} size={14} weight="medium" className="text-primary" /></div>
+    </div>
+    <div className="mt-3 rounded-lg border border-green bg-tint-green p-3">
+      <Text size={12} weight="semibold" className="text-primary">Exact phrase để match option — trích trực tiếp từ đáp án đúng</Text>
+      <Text as="div" size={16} weight="semibold" className="text-primary mt-1">{answerScan}</Text>
+      <Text as="div" size={12} className="text-secondary mt-2">Cụm nhớ nhanh: {phrase}</Text>
+    </div>
+    <div className="mt-4 space-y-2">
+      {q.options.map(o => {
+        const selected = selectedMcq.includes(o.letter);
+        const stateBadge = revealed && o.correct ? <Badge variant="success">Đúng</Badge> : revealed && selected && !o.correct ? <Badge variant="destructive">Sai</Badge> : selected ? <Badge variant="blue">Đang chọn</Badge> : null;
+        return <Button key={o.letter} variant={selected ? "primary-accent" : "secondary"} size="sm" className="w-full justify-start whitespace-normal text-left h-auto py-2" onClick={() => chooseMcq(o.letter)}>
+          <div className="flex w-full items-start gap-2">
+            <Text size={13} weight="semibold" className="text-primary">{o.letter}.</Text>
+            <div className="flex-1"><GlossedText text={o.text} size={13} className="text-primary" /></div>
+            {stateBadge}
+          </div>
+        </Button>;
+      })}
+    </div>
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <Button variant="primary-accent" size="sm" onClick={() => setRevealed(!revealed)}>{revealed ? "Ẩn chấm" : "Chấm nhanh"}</Button>
+      <Text size={12} className="text-secondary">{selectedMcq.length}/{correctLetters.length} đã chọn — không cần đọc stem đầy đủ</Text>
+    </div>
+    {revealed ? <div className="mt-4 rounded-lg border border-primary bg-wash p-3">
+      {result === true ? <Badge variant="success">Match đúng</Badge> : <Badge variant="destructive">Chưa đúng — học lại cụm trên</Badge>}
+      <Text as="div" size={12} className="text-secondary mt-2"><b>Đáp án đúng:</b> {q.answerLabel} — {q.correctSummary}</Text>
+    </div> : null}
+  </CardBody></CardContent></Card>;
+}
+
+function RecognitionTrainer() {
+  const [mode, setMode] = useState("drill");
+  const [topic, setTopic] = useState("all");
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+  const [marks, setMarks] = useState({});
+  const rows = useMemo(() => recognitionRows.filter(r => {
+    const matchesTopic = topic === "all" || r.q.topicKey === topic;
+    const text = (r.q.stem + " " + r.q.correctSummary + " " + r.q.cue + " " + r.phrase + " " + r.scan.join(" ")).toLowerCase();
+    return matchesTopic && text.includes(query.toLowerCase());
+  }), [topic, query]);
+  const choiceRows = rows.filter(r => r.q.type === "mcq");
+  const activeRows = mode === "choice" ? choiceRows : rows;
+  const current = activeRows.length ? activeRows[Math.min(index, activeRows.length - 1)] : null;
+  const knownCount = Object.values(marks).filter(x => x === "known").length;
+  const reviewCount = Object.values(marks).filter(x => x === "review").length;
+  useEffect(() => { setIndex(0); setRevealed(false); }, [topic, query, mode]);
+  function mark(kind) {
+    if (!current) return;
+    setMarks({ ...marks, [current.q.n]: kind });
+    setRevealed(false);
+    setIndex(Math.min(index + 1, Math.max(activeRows.length - 1, 0)));
+  }
+  function jump(delta) {
+    setRevealed(false);
+    setIndex(Math.max(0, Math.min(index + delta, activeRows.length - 1)));
+  }
+  return <Card><CardContent><CardBody>
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="orange">Recognition-first</Badge>
+      <Text size={16} weight="semibold" className="text-primary">Drill 113 câu: scan keyword → nhớ cụm đáp án → match option</Text>
+    </div>
+    <Text as="div" size={13} className="text-secondary mt-2">Đây là phần học chính. Không đọc stem đầy đủ trong lượt đầu: nhìn exact English words cần scan, nhớ cụm đáp án, rồi tìm option chứa cụm/concept đó.</Text>
+    <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <StatCard label="Coverage"><StatCardValue>{rows.length}</StatCardValue><StatCardCaption>câu sau filter / 113 câu</StatCardCaption></StatCard>
+      <StatCard label="Đã nhận diện"><StatCardValue>{knownCount}</StatCardValue><StatCardCaption>đánh dấu trong phiên này</StatCardCaption></StatCard>
+      <StatCard label="Chưa khớp"><StatCardValue>{reviewCount}</StatCardValue><StatCardCaption>cần quét lại</StatCardCaption></StatCard>
+    </div>
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <SegmentedControl value={mode} onValueChange={setMode} variant="rounded" size="small">
+        <SegmentedControlItem value="drill">Nhớ cụm</SegmentedControlItem>
+        <SegmentedControlItem value="choice">Quét option</SegmentedControlItem>
+        <SegmentedControlItem value="table">Bảng 113 câu</SegmentedControlItem>
+      </SegmentedControl>
+      <SimpleSelect value={topic} onValueChange={setTopic} placeholder="Lọc theo topic" options={[{ value: "all", label: "Tất cả topic" }].concat(topicList.map(t => ({ value: t.key, label: t.count + " câu — " + t.vi })))} />
+      <div className="min-w-[220px] flex-1"><Input value={query} onValueChange={setQuery} placeholder="Tìm trigger/đáp án: cache, HIPAA, scope…" /></div>
+    </div>
+
+    {mode === "drill" ? <div>
+      {current ? <div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <Text size={12} className="text-secondary">Câu {Math.min(index + 1, activeRows.length)} / {activeRows.length}{current.q.type !== "mcq" ? " — dạng sequence/mapping, nhớ theo cụm riêng" : ""}</Text>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => jump(-1)}>Trước</Button>
+            <Button variant="secondary" size="sm" onClick={() => jump(1)}>Sau</Button>
+          </div>
+        </div>
+        <Card className="mt-3"><CardContent><CardBody>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="purple">Q{current.q.n}</Badge>
+            <Badge>{current.q.topic}</Badge>
+            <Badge variant="blue">{current.q.kindLabel}</Badge>
+          </div>
+          <div className="mt-4 rounded-lg border border-orange bg-tint-orange p-4">
+            <Text size={12} weight="semibold" className="text-primary">1. Scan exact English words này trong đề</Text>
+            <div className="mt-2 flex flex-wrap gap-2">{current.scan.map((term, i) => <Badge key={i} variant="orange">{term}</Badge>)}</div>
+            <Text size={12} className="text-secondary mt-3">Trigger ngắn để đối chiếu — chỉ đọc phần này, không đọc full stem:</Text>
+            <div className="mt-1"><GlossedText text={current.q.cue} size={15} weight="medium" className="text-primary" /></div>
+          </div>
+          {!revealed ? <div className="mt-4 rounded-lg border border-primary bg-wash p-4">
+            <Text size={14} weight="semibold" className="text-primary">2. Tự nói cụm đáp án trước khi lật</Text>
+            <Text as="div" size={12} className="text-secondary mt-1">Nếu không nhớ trong 2 giây, bấm lật ngay rồi đánh dấu “chưa khớp”.</Text>
+          </div> : <div className="mt-4 rounded-lg border border-green bg-tint-green p-4">
+            <Text size={12} weight="semibold" className="text-primary">2. Exact answer phrase để match option</Text>
+            <Text as="div" size={current.answerScan.length > 140 ? 14 : 19} weight="semibold" className="text-primary mt-1">{current.answerScan}</Text>
+            <Text as="div" size={13} className="text-primary mt-2"><b>Cụm nhớ nhanh:</b> {current.phrase}</Text>
+            <Text as="div" size={12} className="text-secondary mt-3"><b>3. Khi làm bài:</b> quét options và chọn option chứa exact phrase/concept này. Nếu nhiều option chứa cụm nhớ ngắn, exact phrase là phần phân biệt.</Text>
+            <Text as="div" size={12} className="text-secondary mt-2"><b>Đáp án đúng trong bank:</b> {current.q.answerLabel} — {current.q.correctSummary}</Text>
+          </div>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="primary-accent" size="sm" onClick={() => setRevealed(!revealed)}>{revealed ? "Ẩn cụm đáp án" : "Lật cụm đáp án"}</Button>
+            <Button variant="primary" size="sm" onClick={() => mark("known")}>Nhận diện được</Button>
+            <Button variant="warning-muted" size="sm" onClick={() => mark("review")}>Chưa khớp</Button>
+          </div>
+        </CardBody></CardContent></Card>
+      </div> : <BannerCard variant="info" title="Không có câu phù hợp">Xóa search hoặc chọn topic khác.</BannerCard>}
+    </div> : null}
+
+    {mode === "choice" ? <div>
+      {current ? <div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <Text size={12} className="text-secondary">MCQ {Math.min(index + 1, activeRows.length)} / {activeRows.length} — 9 câu Yes/No + dropdown học ở “Nhớ cụm” hoặc bảng</Text>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => jump(-1)}>Trước</Button>
+            <Button variant="secondary" size="sm" onClick={() => jump(1)}>Sau</Button>
+          </div>
+        </div>
+        <RecognitionChoiceCard key={current.q.n} q={current.q} scan={current.scan} phrase={current.phrase} answerScan={current.answerScan} />
+      </div> : <BannerCard variant="info" title="Không có MCQ phù hợp">Xóa search hoặc chọn topic khác.</BannerCard>}
+    </div> : null}
+
+    {mode === "table" ? <Card className="mt-4"><CardContent>
+      <Table rowLines stickyHeader viewportClassName="max-h-[680px]" scrollOrientation="both">
+        <TableHeader><TableRow>
+          <TableHead>Q</TableHead><TableHead>Scan exact words</TableHead><TableHead>Answer phrase để match</TableHead><TableHead>Trigger ngắn</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>
+          {rows.map(r => <TableRow key={r.q.n}>
+            <TableCell><Badge variant="purple">Q{r.q.n}</Badge><Text as="div" size={11} className="text-secondary mt-1">{r.q.kindLabel}</Text></TableCell>
+            <TableCell className="align-top"><div className="w-[195px] flex flex-wrap gap-1">{r.scan.map((term, i) => <span key={i} className="max-w-full whitespace-normal rounded bg-tint-orange px-1 py-0.5 text-[11px] font-medium text-primary">{term}</span>)}</div></TableCell>
+            <TableCell className="align-top"><div className="w-[260px] whitespace-normal break-words"><Text size={13} weight="semibold" className="text-primary">{r.answerScan}</Text><Text as="div" size={11} className="text-secondary mt-1">Cụm nhớ: {r.phrase}</Text></div></TableCell>
+            <TableCell className="align-top"><div className="w-[230px] whitespace-normal break-words"><GlossedText text={r.q.cue} size={12} className="text-primary" /></div></TableCell>
+          </TableRow>)}
+        </TableBody>
+      </Table>
+    </CardContent></Card> : null}
+  </CardBody></CardContent></Card>;
+}
+
 function StudyEngine() {
   const [mode, setMode] = useState("flashcards");
   const [topic, setTopic] = useState("all");
@@ -857,19 +1172,26 @@ function ExamPlaybook() {
 
 
 function Report() {
-  return <PageLayout title="CCAR-P fast study pack" subtitle="113 câu practice được chia theo chủ đề, có mẹo nhớ, pattern đáp án, flashcard và bảng tra nhanh." themeToggle={true}>
+  return <PageLayout title="CCAR-P fast study pack" subtitle="113 câu practice theo recognition-first: scan keyword, nhớ exact answer phrase, match option; vẫn giữ quiz, ví dụ và giải thích tiếng Việt." themeToggle={true}>
     <div className="max-w-[1180px] mx-auto pb-10">
-      <div className="rounded-xl border border-primary bg-elevated p-5">
-        <Text as="div" size={17} weight="semibold" className="text-primary">CCAR-P fast study pack — học 113 câu theo kiểu “thấy dấu hiệu → biết cách chọn”</Text>
-        <Text as="div" size={13} className="text-secondary mt-2">Câu hỏi giữ nguyên tiếng Anh để quen đề, nhưng các cụm quan trọng được highlight màu cam và có nghĩa tiếng Việt ngay bên dưới. Người yếu tiếng Anh nên học theo thứ tự: đọc keyword được dịch → nhìn đáp án đúng → học cụm nhớ ngắn → chỉ mở giải thích chi tiết khi cần.</Text>
+      <div className="rounded-xl border border-orange bg-tint-orange p-5">
+        <Badge variant="orange">Recognition-first</Badge>
+        <Text as="div" size={13} weight="semibold" className="text-secondary mt-2">CCAR-P fast study pack — 113 câu</Text><Text as="div" size={22} weight="semibold" className="text-primary mt-1">KHÔNG CẦN ĐỌC HẾT CÂU</Text>
+        <Text as="div" size={14} className="text-primary mt-2">Chiến thuật chính: scan 2–3 exact English words trong đề → khớp trigger đã học → nhớ cụm đáp án → quét options để chọn option chứa cụm/concept đó. Chỉ đọc kỹ khi hai options quá giống nhau.</Text>
+        <div className="mt-4 grid gap-2 md:grid-cols-4">
+          <div className="rounded-md border border-primary bg-elevated p-3"><Badge variant="orange">1</Badge><Text as="div" size={13} weight="semibold" className="text-primary mt-2">Scan words</Text><Text as="div" size={12} className="text-secondary mt-1">Tìm exact words màu cam, không dịch cả câu.</Text></div>
+          <div className="rounded-md border border-primary bg-elevated p-3"><Badge variant="orange">2</Badge><Text as="div" size={13} weight="semibold" className="text-primary mt-2">Match trigger</Text><Text as="div" size={12} className="text-secondary mt-1">Đối chiếu với trigger ngắn của 113 câu.</Text></div>
+          <div className="rounded-md border border-primary bg-elevated p-3"><Badge variant="orange">3</Badge><Text as="div" size={13} weight="semibold" className="text-primary mt-2">Nhớ answer phrase</Text><Text as="div" size={12} className="text-secondary mt-1">Mỗi câu chỉ học một cụm đáp án/concept ngắn.</Text></div>
+          <div className="rounded-md border border-primary bg-elevated p-3"><Badge variant="orange">4</Badge><Text as="div" size={13} weight="semibold" className="text-primary mt-2">Match option</Text><Text as="div" size={12} className="text-secondary mt-1">Quét options và chọn câu chứa cụm/concept đã nhớ.</Text></div>
+        </div>
       </div>
 
       <Card className="mt-4"><CardContent><CardBody>
-        <Text size={15} weight="semibold" className="text-primary">Cách đọc nếu tiếng Anh yếu</Text>
+        <Text size={15} weight="semibold" className="text-primary">Quy tắc đọc tối thiểu</Text>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
-          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">1</Badge><Text as="div" size={13} className="text-primary mt-2">Đừng đọc toàn bộ câu trước. Tìm cụm màu cam và đọc nghĩa tiếng Việt ngay dưới câu.</Text></div>
-          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">2</Badge><Text as="div" size={13} className="text-primary mt-2">Nhìn phần “Đáp án” và “Nhớ cụm đáp án”; đây là phần quan trọng nhất để nhớ lại nhanh.</Text></div>
-          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">3</Badge><Text as="div" size={13} className="text-primary mt-2">Chỉ mở “giải thích chi tiết” khi chưa hiểu vì sao đúng; không cần đọc hết trong lượt đầu.</Text></div>
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">A</Badge><Text as="div" size={13} className="text-primary mt-2">Không đọc full stem ở lượt đầu. Chỉ đọc trigger ngắn và scan words trong drill.</Text></div>
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">B</Badge><Text as="div" size={13} className="text-primary mt-2">Không cố hiểu mọi option. Tìm option chứa answer phrase/concept đã nhớ.</Text></div>
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">C</Badge><Text as="div" size={13} className="text-primary mt-2">Chỉ mở giải thích chi tiết khi hai options cùng chứa concept và cần phân biệt boundary.</Text></div>
         </div>
       </CardBody></CardContent></Card>
 
@@ -879,6 +1201,9 @@ function Report() {
         <StatCard label="Select-two"><StatCardValue>45</StatCardValue><StatCardCaption>câu MCQ cần đúng cặp bổ sung</StatCardCaption></StatCard>
         <StatCard label="Pass mark"><StatCardValue>70%</StatCardValue><StatCardCaption>mục tiêu tối thiểu</StatCardCaption></StatCard>
       </div>
+
+      <SectionTitle sub="Đây là drill chính cho người yếu tiếng Anh: học nhận diện trước, đọc hiểu sau.">Recognition drill — học chính ở đây</SectionTitle>
+      <RecognitionTrainer />
 
       <SectionTitle sub="Làm đúng thứ tự này để học nhanh thay vì đọc lan man.">Lộ trình 45 phút</SectionTitle>
       <Card><CardContent><CardBody>

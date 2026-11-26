@@ -1,0 +1,936 @@
+<div id="root"></div>
+<script type="text/jsx">
+const topicList = Object.entries(data.topics).map(([key, t]) => ({ key, ...t, count: data.items.filter(q => q.topicKey === key).length }));
+const questions = data.items;
+
+const topicRules = {
+  A: [
+    "Nếu thay đổi làm đổi trách nhiệm của component hoặc core contract (giao ước giữa các phần), đây là thay đổi kiến trúc: phải quay lại design cycle, không chỉ chỉnh tham số tại chỗ.",
+    "Nếu các bước cố định và dự đoán được, chọn deterministic workflow (workflow chạy theo thứ tự định sẵn). Chỉ dùng agent loop khi model thật sự cần tự chọn bước tiếp theo.",
+    "Trong discovery phải chốt decision cần hỗ trợ, metric để đo thành công và constraint bắt buộc trước khi prototype hoặc design chi tiết.",
+    "Khi chuyển phase, phải mang theo lessons learned và evaluation baseline để phase sau không đánh giá lại từ số không."
+  ],
+  B: [
+    "Business value thường rơi vào 5 nhóm: tiết kiệm effort/chi phí, tăng productivity, tạo transformation, giảm solution cost, hoặc cải thiện performance/SLA.",
+    "Với executive, nói decision, business outcome và trade-off trước. Với engineering, đi sâu technical rationale và implementation sau. Với security reviewer, cần threat, control, residual risk và audit evidence.",
+    "Scope creep (phạm vi bị phình thêm giữa chừng) phải thành lựa chọn rõ ràng: làm sau, cắt bớt, hoặc kéo dài timeline; không âm thầm nhận thêm việc.",
+    "Một SLA vận hành được phải có metric đo gì, threshold bao nhiêu, evaluation window trong bao lâu và consequence nếu vi phạm."
+  ],
+  C: [
+    "Thứ tự ưu tiên cấu hình Claude Code: managed configuration do org khóa > command-line arguments > local scope > project scope > user scope. Security baseline không được phép bị user ghi đè.",
+    "Project scope là cấu hình chung của repo/team, ví dụ .claude/settings.json, .mcp.json, CLAUDE.md. User scope là preference cá nhân đi theo từng engineer.",
+    "Skill chứa procedural knowledge (quy trình, ví dụ, cách làm) và không cần kết nối live system. MCP dùng để nối live tools/data bên ngoài và có thể dùng lại giữa các AI client.",
+    "Nếu có quá nhiều tool làm đầy context, dùng Tool Search/progressive discovery để chỉ load tool khi cần; không xóa mất capability.",
+    "Subagent phù hợp khi một specialized task lặp lại và cần prompt, model hoặc nhóm tool hẹp riêng."
+  ],
+  D: [
+    "Prompt caching dùng cho phần prompt ổn định và lặp lại. Với retrieval/history thay đổi liên tục thì phải trim hoặc chọn lọc context.",
+    "Tiered routing nghĩa là dùng model nhẹ/nhanh cho routine traffic volume cao, chỉ route case khó lên model mạnh.",
+    "Dense retrieval tìm theo ý nghĩa/paraphrase. Sparse retrieval tìm exact identifier/rare token. Structured query dùng khi filter/aggregate dữ liệu có schema. Hybrid khác dense-only.",
+    "Zero-shot là baseline khi labels rõ. Few-shot giúp anchor format. Chain-of-thought không phải default cho mọi task.",
+    "Logic deterministic như tính thuế phải nằm trong code/tool, không encode vào prompt vì prompt không đảm bảo tính chính xác."
+  ],
+  E: [
+    "Security/compliance/SLA là điều kiện bắt buộc. Phải kiểm tra chúng trước ROI, cost saving hoặc optimization.",
+    "Least privilege nghĩa là chỉ cấp đúng tool/quyền cần cho responsibility đã định nghĩa; tool không liên quan hoặc cấp phòng hộ đều bị loại.",
+    "User input và retrieved content đều là untrusted data. Prompt injection cần nhiều lớp phòng thủ: prevention, runtime enforcement và logging.",
+    "Authorization phải chạy trước retrieval/prompt/model. Lọc sau khi model đã thấy restricted content là quá muộn vì dữ liệu đã lọt vào context/log.",
+    "Không để credential trong prompt. Secret phải resolve server-side; logs/traces cần minimization/redaction.",
+    "HIPAA/GDPR cần lớp contract đi kèm: BAA/DPA, retention/ZDR, audit logging và cách xử lý quyền của data subject."
+  ],
+  F: [
+    "Trước khi chạy evaluation phải define metrics/slices và chuẩn bị dataset có label. Sau khi chạy mới scoring, dashboard và failure review.",
+    "Regression testing cần stable reference set để so sánh hành vi trước/sau khi đổi model, prompt hoặc config.",
+    "Representative slices phải phản ánh production population. Một subset hẹp không chứng minh model fit cho production.",
+    "Adversarial tests đo khả năng chống bypass/tấn công. Integration tests đo pipeline nhiều component có chạy đúng cùng nhau không.",
+    "Observability cần correlation ID xuyên suốt request và model identity/version trên từng turn để debug drift/regression."
+  ],
+  G: [
+    "Delegation phải dựa trên impact, reversibility và regulatory risk; không kết luận low-risk chỉ vì số tiền nhỏ hay thay đổi ít dòng.",
+    "Quyết định high-impact cần human accountability: AI có thể hỗ trợ nhưng con người vẫn chịu trách nhiệm phê duyệt.",
+    "Risk-stratified sampling nghĩa là review hết output low-confidence/high-impact và chỉ sample ngẫu nhiên một phần routine traffic.",
+    "Acceptance rate, agreement với human hay selection-rate parity chỉ là proxy; chúng không tự chứng minh correctness/fairness.",
+    "Với user-facing AI phải disclose AI involvement và có đường liên hệ/escalation tới con người."
+  ],
+  H: [
+    "ADR (Architecture Decision Record) là tài liệu ghi context, decision, alternatives, consequences, date và authors để audit/onboarding sau này.",
+    "Implementation guide cần nói rõ responsibilities, contracts, sequence flows, config defaults và runbooks để team khác implement được.",
+    "Runbook là tài liệu vận hành: alert thường gặp, cách triage, escalation path, rollback procedure và link dashboard/log.",
+    "Handoff package cần architecture overview, ADRs, contracts, evaluation/reference set, runbooks và known limitations."
+  ]
+};
+
+const keywordGroups = [
+  {
+    title: "Process, lifecycle & sequencing",
+    rows: [
+      ["core contracts / component responsibilities", "kiến trúc thay đổi thật sự, nên phải quay lại design cycle", "Q1"],
+      ["fixed steps / predictable / batch", "chọn workflow cố định theo thứ tự định sẵn; không cần agent tự quyết bước tiếp theo", "Q37"],
+      ["pre-processing / model stage / post-processing", "input/OCR/redaction xảy ra trước model; semantic reasoning xảy ra trong model; schema validation/persistence xảy ra sau model", "Q29"],
+      ["token-management lifecycle", "input preparation trước generation; prompt construction quyết định cache/layout; output handling chỉ làm sau khi output tồn tại", "Q83"],
+      ["BEFORE instrumentation", "định nghĩa SLO/error budget và metrics/slices trước khi chạy", "Q7"],
+      ["BEFORE pilot / experiment / eval", "định nghĩa owner, tiêu chí thành công, dataset/config trước khi chạy", "Q11, Q56, Q97, Q107, Q108"],
+      ["iteration phase", "dùng telemetry, sampled evaluation và stakeholder feedback để chọn thay đổi có impact cao nhất", "Q40"],
+      ["continuity / next phase", "mang evaluation framework/reference set và lessons learned sang phase tiếp theo", "Q84"],
+      ["vague sponsor ask / improve experience", "làm structured discovery: xác định decision đang fail và target metric trước", "Q60, Q64"],
+      ["non-functional requirement", "đây là yêu cầu về latency/scale/chất lượng vận hành, không phải business feature", "Q90"]
+    ]
+  },
+  {
+    title: "Claude Code, MCP, Skills & tools",
+    rows: [
+      ["security-critical / cannot override", "chọn managed configuration; thứ tự ưu tiên là managed > CLI > local > project > user", "Q4, Q26, Q94"],
+      ["team-shared repo config / version control", "chọn project scope cho cấu hình team/repo: .claude/settings.json, .mcp.json, CLAUDE.md", "Q4, Q71, Q95"],
+      ["personal preference follows engineer", "chọn user scope vì đây là preference cá nhân của engineer", "Q62"],
+      ["procedural knowledge / examples / no live system", "chọn Skill; nên có một owner và tái sử dụng cùng Skill để tránh nhiều bản copy bị lệch nhau", "Q17, Q35"],
+      ["live tool/data / portable across AI clients", "chọn MCP khi cần live tool/data; nếu đã có HTTP API stateless, latency thấp thì direct API có thể hợp lý hơn", "Q43, Q110"],
+      ["60 tools / context exhausted / 50k before first message", "dùng Tool Search hoặc progressive tool discovery để chỉ load tool khi cần", "Q25, Q59, Q89"],
+      ["recurring specialized task / narrow tools / model riêng", "chọn dedicated subagent cho tác vụ chuyên biệt lặp lại", "Q57"],
+      ["MCP missing after config change", "kiểm tra server đã được register/list chưa, rồi reconnect hoặc restart session", "Q53"],
+      ["IDE inline assistance vs separate Slack bot", "giảm context switching bằng cách đưa AI vào ngay nơi developer đang làm việc", "Q13"],
+      ["operational issue / diagnostic toolkit", "tạo minimal reproduction, đổi một biến mỗi lần và inspect trạng thái MCP server đã cấu hình", "Q16"],
+      ["permission denial khi expected allowed", "inspect permission rules đang active ở mọi scope managed/CLI/local/project/user trước khi sửa rule", "Q33"],
+      ["34 tools / multiple domains / tool-router proposal", "tách capability boundary trước; router thêm một model call cố định vào mỗi request nên không phải default", "Q67"],
+      ["Skills across many teams / trustworthy governance", "để domain teams viết Skills nhưng có central review/publication gate để giữ chất lượng", "Q77"],
+      ["Skill approved nhưng cần app guardrails?", "application layer giữ authorization/audit; Skill giữ procedural content/disclaimers", "Q78"],
+      ["first launch fails, later succeeds + permission dialogs", "đây là first-run permission grant một lần; cần document onboarding rõ ràng", "Q14"],
+      ["unrestricted Bash / broad access", "thu hẹp command patterns được phép và explicit deny các thao tác nhạy cảm", "Q103"]
+    ]
+  },
+  {
+    title: "RAG, prompting, cost & model selection",
+    rows: [
+      ["repeated static prefix / long prompt / same document nhiều lần", "prompt caching", "Q3, Q18, Q66, Q79, Q96"],
+      ["large retrieved context / retrieval cost", "cắt bớt spans hoặc giảm top-k nhưng vẫn phải giữ đủ tài liệu liên quan", "Q18, Q83, Q96"],
+      ["routine traffic / high-volume / tight latency", "dùng model nhẹ/nhanh như Haiku cho routine traffic; case khó mới route lên model mạnh", "Q12, Q79, Q86"],
+      ["model selection / production decision", "dựa trên workload profile và representative evaluation; không chọn chỉ vì newest/most capable", "Q12, Q39"],
+      ["authoritative internal source + citations + audit predictability", "dùng RAG trên authoritative corpus đã index và render citations để audit được", "Q8"],
+      ["candidate use cases for Claude", "language/reasoning/bounded classification thì phù hợp; sub-50ms deterministic scoring hoặc vector-index infrastructure thì không phù hợp", "Q42"],
+      ["zero-shot / few-shot / chain-of-thought / model version", "zero-shot cho closed-set rõ; few-shot giúp cố định format; CoT không phải default; đổi model version thì phải regression-test", "Q92"],
+      ["paraphrased intent", "dense vector retrieval", "Q93"],
+      ["exact identifiers / rare tokens", "sparse term matching", "Q93"],
+      ["filter-and-aggregate relational data", "structured query retrieval", "Q93"],
+      ["code/AST/spec hierarchy", "function-level/tree-aware chunking", "Q20"],
+      ["long structured document", "semantic clause/paragraph hoặc document-section hierarchy", "Q20"],
+      ["short independent records", "per-record hoặc fixed-size + overlap", "Q20"],
+      ["contradictory instructions", "sửa mâu thuẫn ở source prompt thay vì thêm nhiều lớp instruction rườm rà", "Q19"],
+      ["tax/deterministic business logic", "đặt logic vào code/tool, không encode vào system prompt", "Q104"]
+    ]
+  },
+  {
+    title: "Security, guardrails, privacy & compliance",
+    rows: [
+      ["least privilege / defined responsibility", "chỉ allow-list đúng tools cần thiết; remove các tool không liên quan hoặc chỉ cấp phòng hộ", "Q27, Q31, Q34"],
+      ["production DB / data-modifying operation", "mặc định read-only, dùng narrow tools và bắt buộc human confirmation cho thao tác sửa dữ liệu", "Q23"],
+      ["user/retrieved content instructs model", "xem là untrusted data; cần runtime classifier và output validation", "Q55, Q76"],
+      ["outbound HTTP/tool + sensitive retrieval", "đây là nguy cơ data exfiltration; phải restrict destination/allow-list và review tool calls", "Q2, Q48"],
+      ["RBAC / role-restricted content", "kiểm tra quyền trước retrieval/prompt/model; lọc sau là quá muộn", "Q38, Q105"],
+      ["credentials in prompt", "secret phải resolve server-side vì prompt/log/trace có thể leak", "Q105"],
+      ["regulated/prohibited advice", "kết hợp system-prompt boundary và output classifier để có nhiều lớp phòng thủ", "Q63"],
+      ["shared API key / missing initiating user", "dùng OAuth scoped theo từng user và ghi actor attribution trong logs", "Q69"],
+      ["robust guardrail design", "cần adversarial eval/regression tracking và per-role tool allow-list được enforce trước khi tool chạy", "Q28"],
+      ["intrinsic LLM failure modes", "over-refusal do safety pattern hoặc plausible unsupported answer là failure mode của LLM, không phải generic infra defect", "Q30"],
+      ["structured output downstream actions", "validate schema trước action và kết hợp prompt guardrails với runtime checks", "Q45"],
+      ["managed agent infrastructure / network boundary", "network boundary là yêu cầu bảo mật bắt buộc, quyết định trước lợi ích maintenance/cost", "Q52"],
+      ["HIPAA pipeline design", "dùng RBAC cho PHI và không đưa patient data vào training feedback loops khi chưa có BAA", "Q58"],
+      ["HIPAA-eligible Anthropic configuration", "cần Enterprise + signed BAA + Zero Data Retention + audit logging", "Q100"],
+      ["GDPR", "cần DPA, retention config, minimization/redaction và quy trình xử lý data-subject rights", "Q111"],
+      ["regulatory applicability", "xác định data types, jurisdiction và audience trước, rồi kiểm kê các tính năng hỗ trợ compliance", "Q91"],
+      ["risk assessment", "kiểm kê asset/sensitivity và threat actors/vectors trước khi đánh giá likelihood-impact", "Q109"]
+    ]
+  },
+  {
+    title: "Evaluation, testing & observability",
+    rows: [
+      ["representative / production population", "mở rộng các slice rồi chấm lại; một subset hẹp không chứng minh model đủ phù hợp production", "Q22"],
+      ["silent quality drift / model upgrade", "dùng stable adversarial/reference set và score theo model version", "Q2, Q81"],
+      ["previously passing / after prompt update", "chạy regression tests trên stable known-good reference set", "Q72"],
+      ["after maintenance / malformed JSON", "diff config trước/sau, replay old requests và inspect raw output", "Q75"],
+      ["grounded responses include unsupported claims", "constrain output vào source-supported content, require citations và thêm verification step", "Q44"],
+      ["responses contradict sources / retrieval unchanged", "diagnose bằng previous-model A/B và inspect grounding/citation instructions", "Q65"],
+      ["fabricated citation incident", "sample population và inspect xem grounding controls có thật sự tồn tại không", "Q68"],
+      ["sensitive financial pipeline tests", "cần adversarial prompt-injection tests và end-to-end integration tests", "Q88"],
+      ["cannot connect spans / missing model version", "cần correlation IDs và model identity/version trên mọi turn", "Q106"],
+      ["controlled experiment", "định nghĩa hypothesis/primary metric và effect size/sample size trước random assignment", "Q108"],
+      ["operational SLA", "cần metric, threshold, evaluation window và consequence khi breach", "Q85"],
+      ["hard requirement metrics / cost ceiling / unauthorized roles", "đo trực tiếp requirement: RBAC enforcement rate trên red-team set và per-query token cost", "Q61"],
+    ]
+  },
+  {
+    title: "Human oversight, ethics & delegation",
+    rows: [
+      ["small refund / under 50 lines / low risk proxy", "loại rủi ro/blast radius quan trọng hơn số tiền hay số dòng", "Q51, Q74"],
+      ["high-impact / irreversible / low confidence / user asks", "cần human oversight hoặc escalation", "Q11, Q32, Q36"],
+      ["review every output impossible", "dùng risk-stratified sampling: review hết low-confidence/high-impact và sample ngẫu nhiên routine traffic", "Q99"],
+      ["approval-rate parity / human agreement", "chưa chứng minh fairness/correctness; cần xem error parity và input-space review", "Q49, Q50"],
+      ["candidate screening / protected groups", "outcome disparity và pretraining bias vẫn phải evaluate", "Q73"],
+      ["AI-generated docs/code", "vẫn phải qua review/verification như thường; con người giữ approval", "Q5, Q74, Q98"],
+      ["customer-facing transparency", "phải disclose AI involvement và có đường liên hệ/escalation tới con người", "Q6"]
+    ]
+  },
+  {
+    title: "Business value, docs & stakeholders",
+    rows: [
+      ["efficiency / productivity / transformation / cost / SLA", "map đúng business-value pillar trước khi kết luận value", "Q10, Q15, Q47"],
+      ["mixed executive + engineering audience", "nói decision/business/trade-off trước, technical rationale sau", "Q9"],
+      ["steering committee CFO / legal / CIO", "mở đầu bằng architectural decision rồi trả lời primary concern của từng stakeholder", "Q113"],
+      ["security/compliance reviewer", "cần threat model, control mappings, residual risk và audit traceability", "Q80"],
+      ["scope creep / significant new scope", "biến thành lựa chọn rõ ràng: defer, descope hoặc extend timeline", "Q24"],
+      ["latency concerns mid-flight", "đo p50/p95 so với SLA; renegotiate nếu target không khả thi", "Q70"],
+      ["audit/onboarding architecture decision", "dùng ADR gồm context, decision, alternatives, consequences, authors/date", "Q21, Q46"],
+      ["implementation guide/handoff", "cần contracts, IO shapes, sequence flows, config, runbooks và limitations", "Q41, Q54, Q102, Q112"],
+      ["operational runbook", "cần alerts, triage, escalation, rollback và links tới dashboards/logs", "Q101"],
+      ["feedback session", "cần agenda, pre-read, written decisions và owners/dates", "Q87"],
+      ["stakeholder alignment over time", "theo cadence revisit expectations/assumptions và reconcile các vị trí khác nhau một cách tường minh", "Q82"],
+    ]
+  }
+];
+
+const answerPatternRows = [
+  ["Từ tuyệt đối: always / every / entirely / regardless / all", "Trong bank này: always đúng 0/2 lần, every 2/32, entirely 0/11, regardless 1/9, all 8/47.", "Mặc định nghi ngờ vì các từ này thường làm đáp án quá cứng. Chỉ chọn khi đề thật sự nói đó là yêu cầu bắt buộc về bảo mật hoặc compliance."],
+  ["Đáp án có chữ “only”", "Chỉ đúng 5/22 lần xuất hiện trong bank.", "Thường là bẫy vì kiến trúc tốt hiếm khi chỉ dùng một mechanism. Kiểm tra xem có cần thêm authorization, validation, logging hoặc human review không."],
+  ["Đáp án hứa “without …”", "Chỉ đúng 3/45 lần xuất hiện trong bank.", "Nghi ngờ các câu kiểu “không cần trade-off”, “không ảnh hưởng latency” hoặc “không cần monitoring”. Lời hứa loại trừ hết trade-off thường phi thực tế."],
+  ["Đáp án dài hay ngắn?", "Ở 59 câu chọn một: đáp án đúng nằm trong nhóm dài nhất 22/59 lần, ngắn nhất 13/59 lần (tính cả trường hợp hòa độ dài).", "Đáp án tốt thường dài vì nói đủ boundary/owner/mechanism. Nhưng độ dài chỉ là tie-breaker yếu, không đủ để chọn đáp án."],
+  ["Vị trí A/B/C/D", "Tỷ lệ xuất hiện trong correct set gần đều: A 33%, B 29%, C 32%, D 34% (cộng >100% vì có câu chọn 2).", "Không có pattern theo chữ cái. Đừng chọn theo vị trí."],
+  ["Câu “select two”", "45/104 câu MCQ là select-two; tất cả đều có 5 options.", "Thường tìm một cặp cùng bổ sung cho nhau: một phần đo/định nghĩa và một phần enforce/vận hành, hoặc prevention + detection."],
+  ["Yes/No", "29 statements: 17 Yes, 12 No.", "Yes thường là nguyên tắc đo được, kiến trúc đúng layer hoặc least-privilege. No thường là shortcut, bỏ qua drift, chọn ngẫu nhiên hoặc vi phạm privacy."],
+  ["Verb mở đầu đáp án", "Sample nhỏ trong bank: define/identify/enable/verify/cache thường đúng; document 0/6 lần mở đầu là đúng.", "Đây chỉ là tie-breaker rất yếu. Quan trọng hơn là đáp án nói rõ object nào, boundary nào, ai sở hữu và enforce bằng cơ chế nào."]
+];
+
+const speedPlan = [
+  ["0–10 phút", "Đọc cheat-sheet 8 topic và các mẹo làm bài để biết khung tư duy trước. Chưa cần đọc từng câu."],
+  ["10–25 phút", "Làm flashcard theo topic. Nếu trong 2 giây không nhớ trigger thì bấm “ôn lại” ngay."],
+  ["25–35 phút", "Mở tab Yes/No và dropdown. Học thuộc mapping/sequence vì phần này cố định và dễ lấy điểm nhanh."],
+  ["35–45 phút", "Quét bảng tra nhanh: chỉ đọc câu đã bấm “ôn lại” và các câu select-two."],
+  ["Trước khi thi", "Khi phân vân, ưu tiên theo thứ tự: điều kiện bắt buộc → quyền tối thiểu → đo trước khi chạy → chặn trước khi lộ dữ liệu → con người giữ quyết định rủi ro cao."]
+];
+
+const examDecisionNodes = [
+  { id: "q", title: "Đọc câu hỏi", sub: "Tìm điều kiện bắt buộc, mốc trước/sau và audience", group: "start", selected: true },
+  { id: "hard", title: "Có yêu cầu bắt buộc?", sub: "SLA, bảo mật hoặc tuân thủ", group: "decision" },
+  { id: "sequence", title: "Đề hỏi trước hay sau?", sub: "Xác định bước chuẩn bị hay bước chạy", group: "decision" },
+  { id: "scope", title: "Đúng scope/tầng chưa?", sub: "Ai sở hữu, ở layer nào, quyền tối thiểu gì", group: "decision" },
+  { id: "eval", title: "Có đo được không?", sub: "Metric, dataset, slice và reference set", group: "decision" },
+  { id: "answer", title: "Chọn đáp án cụ thể", sub: "Nói rõ ai làm, ở đâu, bằng cơ chế nào", group: "end" }
+];
+const examDecisionEdges = [
+  { from: "q", to: "hard" }, { from: "hard", to: "sequence" }, { from: "sequence", to: "scope" }, { from: "scope", to: "eval" }, { from: "eval", to: "answer" }
+];
+
+
+const vocabulary = [
+  ["managed configuration", "cấu hình do admin khóa; không bị ghi đè"],
+  ["command-line arguments", "tham số dòng lệnh; precedence đứng sau managed"],
+  ["project scope", "cấu hình chung của repo/team"],
+  ["user scope", "cấu hình cá nhân, đi theo engineer"],
+  ["prompt caching", "cache phần prompt lặp lại để giảm cost/latency"],
+  ["deterministic workflow", "workflow cố định, predictable, không cần agent tự quyết"],
+  ["agent loop", "vòng lặp agent tự chọn bước/tool khi workflow linh hoạt"],
+  ["procedural knowledge", "kiến thức quy trình/cách làm; phù hợp Skill"],
+  ["Model Context Protocol", "giao thức nối Claude với tools/data bên ngoài"],
+  ["MCP server", "server cung cấp tool/data qua MCP"],
+  ["Tool Search", "tìm tool khi cần thay vì nhét toàn bộ vào context"],
+  ["progressive tool discovery", "khám phá tool dần dần để tiết kiệm context"],
+  ["subagent", "agent chuyên biệt với prompt/model/tools riêng"],
+  ["direct API", "gọi API trực tiếp, không cần MCP wrapper"],
+  ["retrieval-augmented generation", "RAG: retrieve nguồn rồi generate dựa trên nguồn"],
+  ["dense vector retrieval", "retrieval theo semantic/ý nghĩa, tốt cho paraphrase"],
+  ["sparse term matching", "retrieval theo exact terms/identifiers"],
+  ["structured query retrieval", "query có cấu trúc để filter/aggregate dữ liệu"],
+  ["least privilege", "chỉ cấp đúng quyền tối thiểu cần dùng"],
+  ["allow-list", "danh sách được phép; ngoài list là chặn"],
+  ["explicit deny", "rule chặn rõ ràng, thường override allow"],
+  ["untrusted data", "dữ liệu không tin cậy: user input/retrieved content"],
+  ["prompt injection", "nội dung độc hại cố điều khiển model"],
+  ["output validation", "kiểm tra output trước khi action/persist"],
+  ["RBAC", "role-based access control: quyền theo vai trò"],
+  ["before retrieval", "kiểm soát trước khi dữ liệu được retrieve vào context"],
+  ["server-side", "xử lý ở server, không đưa secret vào prompt/client"],
+  ["audit logging", "log phục vụ audit/ai đã làm gì"],
+  ["Zero Data Retention", "không giữ dữ liệu sau xử lý"],
+  ["HIPAA", "luật healthcare privacy của Mỹ"],
+  ["BAA", "Business Associate Agreement trong bối cảnh HIPAA"],
+  ["PHI", "protected health information: dữ liệu sức khỏe cá nhân"],
+  ["patient records", "hồ sơ bệnh nhân"],
+  ["role-based access controls", "phân quyền truy cập theo vai trò"],
+  ["network boundary", "ranh giới mạng được duyệt/kiểm soát"],
+  ["audit trail", "dấu vết audit: ai đã làm gì, khi nào"],
+  ["managed agent infrastructure", "hạ tầng agent do nhà cung cấp vận hành"],
+  ["GDPR", "luật bảo vệ dữ liệu cá nhân EU"],
+  ["DPA", "Data Processing Agreement trong bối cảnh GDPR"],
+  ["regression tests", "test lại để phát hiện regression sau thay đổi"],
+  ["reference set", "tập dữ liệu chuẩn/stable để so sánh qua versions"],
+  ["representative slices", "các slice đại diện đúng production population"],
+  ["adversarial", "test tấn công/cố tình bypass guardrail"],
+  ["correlation identifiers", "ID nối các spans/logs của cùng request"],
+  ["model version", "phiên bản model, cần log để phân tích drift"],
+  ["controlled experiment", "thí nghiệm có kiểm soát để so sánh công bằng"],
+  ["random assignment", "chia ngẫu nhiên vào các nhóm thí nghiệm"],
+  ["sample size", "số lượng mẫu cần để kết luận đủ tin cậy"],
+  ["primary success metric", "metric chính để quyết định thành công"],
+  ["silent quality drift", "chất lượng tụt âm thầm sau thay đổi model/prompt"],
+  ["service credentials", "credential của service; tuyệt đối không đưa vào prompt"],
+  ["prompt context", "nội dung nằm trong context gửi cho model"],
+  ["human oversight", "con người giám sát/can thiệp vào quyết định AI"],
+  ["high-impact", "tác động lớn; cần human accountability"],
+  ["blast radius", "phạm vi thiệt hại nếu action sai"],
+  ["irreversible", "khó/không thể rollback"],
+  ["stakeholder", "bên liên quan cần align/communicate"],
+  ["Architecture Decision Record", "ADR: ghi context, decision, alternatives, consequences"],
+  ["runbook", "tài liệu vận hành: triage, escalation, rollback"],
+  ["SLA", "service level agreement: metric + threshold + window"],
+  ["error budget", "ngân sách lỗi chấp nhận được trong SLO"],
+  ["zero-shot", "không cần ví dụ mẫu"],
+  ["few-shot", "có vài ví dụ mẫu trong prompt"],
+  ["chain-of-thought", "reasoning từng bước; không phải default cho mọi task"],
+  ["evaluation framework", "khung đánh giá: metrics, dataset, scoring, review"],
+  ["latency", "độ trễ"],
+  ["throughput", "thông lượng/xử lý được bao nhiêu request"],
+  ["context switching", "phải nhảy qua lại giữa tools/môi trường làm việc"],
+  ["scope creep", "scope bị phình ra ngoài thỏa thuận ban đầu"],
+  ["define", "định nghĩa hoặc chốt trước"],
+  ["artifact", "tài liệu/cấu hình đầu ra cần tồn tại"],
+  ["owner", "người hoặc đội chịu trách nhiệm"],
+  ["mechanism", "cơ chế thực thi cụ thể"],
+  ["boundary", "ranh giới trách nhiệm hoặc kiểm soát"],
+  ["sequence", "trình tự trước/sau"],
+  ["layer", "tầng trong kiến trúc"],
+  ["scope", "phạm vi áp dụng cấu hình/quyền"],
+  ["enforce", "bắt buộc thực thi bằng hệ thống"],
+  ["enforcement", "việc bắt buộc thực thi bằng hệ thống"],
+  ["runtime", "lúc hệ thống đang chạy"],
+  ["prevention", "ngăn từ trước"],
+  ["detection", "phát hiện khi có dấu hiệu"],
+  ["capability", "khả năng/tính năng"],
+  ["fit", "mức độ phù hợp"],
+  ["evaluation", "hoạt động đánh giá"],
+  ["metric", "chỉ số đo"],
+  ["metrics", "các chỉ số đo"],
+  ["dataset", "bộ dữ liệu test"],
+  ["baseline", "mức hiện tại để so sánh"],
+  ["slice", "nhóm dữ liệu tách riêng để đo"],
+  ["slices", "các nhóm dữ liệu tách riêng để đo"],
+  ["route", "điều hướng request tới model/tool phù hợp"],
+  ["trim", "cắt bớt context"],
+  ["top-k", "số kết quả retrieval được lấy ra"],
+  ["recall", "tỷ lệ tìm lại đúng tài liệu liên quan"],
+  ["post-filter", "lọc sau khi dữ liệu đã được tạo ra hoặc model đã thấy"],
+  ["proxy", "dấu hiệu gián tiếp, không phải bằng chứng trực tiếp"],
+  ["trade-off", "sự đánh đổi giữa hai mục tiêu"],
+  ["production", "môi trường thật đang phục vụ user"],
+  ["workload", "loại việc/traffic thật mà hệ thống phải xử lý"],
+  ["attribution", "gắn kết quả với đúng actor/model/version"],
+  ["compliance affordances", "tính năng hỗ trợ tuân thủ"]
+];
+const vocabRegexSource = vocabulary.slice().sort((a,b) => b[0].length - a[0].length).map(v => v[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+function vocabEntry(term) {
+  return vocabulary.find(v => v[0].toLowerCase() === term.toLowerCase());
+}
+function glossedParts(text) {
+  const source = text || "";
+  const rx = new RegExp("\\b(" + vocabRegexSource + ")\\b", "gi");
+  const out = [];
+  let last = 0;
+  let match;
+  while ((match = rx.exec(source))) {
+    if (match.index > last) out.push(source.slice(last, match.index));
+    const entry = vocabEntry(match[0]);
+    out.push(<span key={out.length + "-g"} title={entry ? entry[1] : ""} className="rounded bg-tint-orange px-1 font-medium text-primary">{match[0]}</span>);
+    last = match.index + match[0].length;
+  }
+  if (last < source.length) out.push(source.slice(last));
+  return out;
+}
+function GlossedText({ text, size = 13, weight, className = "" }) {
+  return <Text size={size} weight={weight} className={className}>{glossedParts(text)}</Text>;
+}
+function vocabMatches(texts) {
+  const joined = (texts || []).filter(Boolean).join(" ").toLowerCase();
+  return vocabulary.filter(v => joined.includes(v[0].toLowerCase())).slice(0, 5);
+}
+function VocabChips({ texts }) {
+  const found = vocabMatches(texts);
+  if (!found.length) return null;
+  return <div className="mt-2 rounded-lg border border-orange bg-tint-orange p-2">
+    <Text size={11} weight="semibold" className="text-primary">Từ khóa cần hiểu:</Text>
+    <div className="mt-1 space-y-1">
+      {found.map((v, i) => <Text as="div" size={11} className="text-primary" key={i}><b>{v[0]}</b> = {v[1]}</Text>)}
+    </div>
+  </div>;
+}
+function VocabInline({ texts }) {
+  const found = vocabMatches(texts);
+  if (!found.length) return null;
+  return <Text as="div" size={11} className="text-secondary mt-1">{found.map(v => v[0] + " = " + v[1]).join(" · ")}</Text>;
+}
+function ExplanationToggle({ q }) {
+  if (!q.explanation) return null;
+  return <CollapsibleRoot className="mt-2">
+    <CollapsibleTrigger caretPosition="left" className="text-xs font-medium text-blue">Xem giải thích chi tiết</CollapsibleTrigger>
+    <CollapsiblePanel className="mt-2 rounded-md border border-primary bg-wash p-2">
+      <GlossedText text={q.explanation} size={12} className="text-secondary" />
+    </CollapsiblePanel>
+  </CollapsibleRoot>;
+}
+function VocabCheatSheet() {
+  const [showAll, setShowAll] = useState(false);
+  const rows = showAll ? vocabulary : vocabulary.slice(0, 24);
+  return <Card><CardContent><CardBody>
+    <Text as="div" size={15} weight="semibold" className="text-primary">Mini từ điển: hiểu cụm này là đọc đề nhanh hơn nhiều</Text>
+    <Text as="div" size={12} className="text-secondary mt-1">Trong câu hỏi, các cụm này được highlight màu cam. Không cần nhớ chính tả — chỉ cần nhớ nghĩa và rule đi kèm.</Text>
+    <div className="mt-4 grid gap-2 md:grid-cols-2">
+      {rows.map((v, i) => <div key={i} className="rounded-md border border-primary bg-wash p-3">
+        <Text size={13} weight="semibold" className="text-primary">{v[0]}</Text>
+        <Text as="div" size={12} className="text-secondary mt-1">{v[1]}</Text>
+      </div>)}
+    </div>
+    <div className="mt-3"><Button variant="secondary" size="sm" onClick={() => setShowAll(!showAll)}>{showAll ? "Thu gọn từ điển" : "Xem thêm cụm khác"}</Button></div>
+  </CardBody></CardContent></Card>;
+}
+
+function SectionTitle({ children, sub }) {
+  return <div className="mt-8 mb-3">
+    <Text as="div" size={17} weight="semibold" className="text-primary">{children}</Text>
+    {sub ? <Text as="div" size={12} className="text-secondary mt-1">{sub}</Text> : null}
+  </div>;
+}
+
+function sameLetters(a, b) {
+  return a.length === b.length && a.every(x => b.includes(x));
+}
+
+function AnswerDetails({ q, revealed, result }) {
+  if (!revealed) {
+    return <div className="mt-4 rounded-lg border border-primary bg-wash p-3">
+      <Text size={12} className="text-secondary">Chọn đáp án trước, rồi bấm “Chấm / lật đáp án”. Nếu chỉ muốn học nhanh thì cứ bấm luôn để xem đáp.</Text>
+    </div>;
+  }
+  return <div className="mt-4 rounded-lg border border-green bg-tint-green p-3">
+    <div className="flex flex-wrap items-center gap-2">
+      {result === true ? <Badge variant="success">Bạn chọn đúng</Badge> : null}
+      {result === false ? <Badge variant="destructive">Chưa đúng — xem đáp án</Badge> : null}
+      <Badge variant="success">Đáp án: {q.answerLabel}</Badge>
+      <Badge variant="blue">{q.kindLabel}</Badge>
+    </div>
+    <Text size={13} weight="medium" className="text-primary mt-3">Rule nhớ / vì sao đúng</Text>
+    <GlossedText text={q.memory} size={14} className="text-primary mt-1" />
+    {q.rows ? <div className="mt-3 space-y-2">
+      {q.rows.map((r, i) => <div key={i} className="rounded-md border border-primary bg-elevated p-2">
+        <Text size={12} className="text-primary"><b>{r.answer}</b> — </Text><GlossedText text={r.label} size={12} className="text-primary" />
+      </div>)}
+    </div> : null}
+  </div>;
+}
+
+function QuestionPracticeCard({ q, mode }) {
+  const [revealed, setRevealed] = useState(false);
+  const [selectedMcq, setSelectedMcq] = useState([]);
+  const [selectedRows, setSelectedRows] = useState({});
+  const correctLetters = q.options ? q.options.filter(o => o.correct).map(o => o.letter) : [];
+  const multi = correctLetters.length > 1;
+  const rowCount = q.rows ? q.rows.length : 0;
+  const answeredRows = Object.keys(selectedRows).length;
+  const result = !revealed ? null : (q.options ? sameLetters(selectedMcq, correctLetters) : q.rows.every((r, i) => selectedRows[i] === r.answer));
+
+  function chooseMcq(letter) {
+    if (revealed) return;
+    if (multi) {
+      setSelectedMcq(selectedMcq.includes(letter) ? selectedMcq.filter(x => x !== letter) : selectedMcq.concat(letter));
+    } else {
+      setSelectedMcq([letter]);
+    }
+  }
+  function chooseRow(i, value) {
+    if (revealed) return;
+    setSelectedRows({ ...selectedRows, [i]: value });
+  }
+
+  const instruction = q.options
+    ? (multi ? "Chọn đúng " + correctLetters.length + " đáp án rồi chấm" : "Chọn 1 đáp án rồi chấm")
+    : (q.type === "yesno" ? "Chọn Yes/No cho từng statement rồi chấm" : "Chọn mapping cho từng dòng rồi chấm");
+  const progress = q.options
+    ? (selectedMcq.length + "/" + correctLetters.length + " đã chọn")
+    : (answeredRows + "/" + rowCount + " dòng đã chọn");
+
+  return <Card className="mt-4">
+    <CardContent>
+      <CardBody>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="purple">Q{q.n}</Badge>
+          <Badge>{q.topic}</Badge>
+          <Badge variant="orange">{q.kindLabel}</Badge>
+          <Badge variant="blue">{instruction}</Badge>
+        </div>
+        <GlossedText text={q.stem} size={15} weight="medium" className="text-primary mt-3" />
+        <VocabChips texts={[q.stem, q.correctSummary]} />
+        {q.options ? <div className="mt-4 space-y-2">
+          {q.options.map(o => {
+            const selected = selectedMcq.includes(o.letter);
+            const stateBadge = revealed && o.correct ? <Badge variant="success">Đúng</Badge> : revealed && selected && !o.correct ? <Badge variant="destructive">Sai</Badge> : selected ? <Badge variant="blue">Đang chọn</Badge> : null;
+            return <Button key={o.letter} variant={selected ? "primary-accent" : "secondary"} size="sm" className="w-full justify-start whitespace-normal text-left h-auto py-2" onClick={() => chooseMcq(o.letter)}>
+              <div className="flex w-full items-start gap-2">
+                <Text size={13} weight="semibold" className="text-primary">{o.letter}.</Text>
+                <div className="flex-1"><GlossedText text={o.text} size={13} className="text-primary" /></div>
+                {stateBadge}
+              </div>
+            </Button>;
+          })}
+        </div> : null}
+        {q.rows ? <div className="mt-4 space-y-2">
+          {q.rows.map((r, i) => {
+            const picked = selectedRows[i];
+            const rowCorrect = revealed && picked === r.answer;
+            const rowWrong = revealed && picked && picked !== r.answer;
+            const dropdownOptions = Array.from(new Set(q.rows.map(x => x.answer))).map(x => ({ value: x, label: x }));
+            return <div key={i} className="rounded-md border border-primary bg-elevated p-3">
+              <div className="flex flex-wrap items-start gap-2">
+                <div className="flex-1"><GlossedText text={r.label} size={13} className="text-primary" /></div>
+                {rowCorrect ? <Badge variant="success">Đúng</Badge> : null}
+                {rowWrong ? <Badge variant="destructive">Sai — đáp án: {r.answer}</Badge> : null}
+              </div>
+              {q.type === "yesno" ? <div className="mt-2 flex flex-wrap gap-2">
+                <Button variant={picked === "Y" ? "primary-accent" : "secondary"} size="sm" onClick={() => chooseRow(i, "Y")}>Yes</Button>
+                <Button variant={picked === "N" ? "primary-accent" : "secondary"} size="sm" onClick={() => chooseRow(i, "N")}>No</Button>
+              </div> : <div className="mt-2 max-w-[420px]">
+                <SimpleSelect value={picked || null} onValueChange={v => chooseRow(i, v)} placeholder="Chọn mapping" options={dropdownOptions} disabled={revealed} />
+              </div>}
+            </div>;
+          })}
+        </div> : null}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button variant="primary-accent" size="sm" onClick={() => setRevealed(!revealed)}>{revealed ? "Ẩn đáp án" : "Chấm / lật đáp án"}</Button>
+          <Text size={12} className="text-secondary">{progress}</Text>
+        </div>
+        <AnswerDetails q={q} revealed={revealed} result={result} />
+      </CardBody>
+    </CardContent>
+  </Card>;
+}
+
+function TopicCheatSheet() {
+  const [openTopic, setOpenTopic] = useState("C");
+  const active = data.topics[openTopic];
+  return <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+    <Card><CardContent><CardBody>
+      <Text size={13} weight="semibold" className="text-primary">8 nhóm chủ đề</Text>
+      <div className="mt-3 space-y-2">
+        {topicList.map(t => <Button key={t.key} variant={openTopic === t.key ? "primary-accent" : "secondary"} size="sm" className="w-full justify-start whitespace-normal text-left h-auto py-2" onClick={() => setOpenTopic(t.key)}>
+          {t.count} câu — {t.vi}
+        </Button>)}
+      </div>
+    </CardBody></CardContent></Card>
+    <Card><CardContent><CardBody>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="blue">{topicList.find(t => t.key === openTopic).count} câu</Badge>
+        <Text size={15} weight="semibold" className="text-primary">{active.vi}</Text>
+      </div>
+      <Text size={13} className="text-secondary mt-2"><b>Câu chốt của nhóm:</b> {active.mantra}</Text>
+      <div className="mt-4 space-y-2">
+        {topicRules[openTopic].map((r, i) => <div key={i} className="rounded-md border border-primary bg-wash p-3">
+          <Text size={13} className="text-primary">{r}</Text>
+        </div>)}
+      </div>
+      <Text size={12} className="text-secondary mt-4">Câu trong nhóm: {questions.filter(q => q.topicKey === openTopic).map(q => "Q" + q.n).join(", ")}</Text>
+    </CardBody></CardContent></Card>
+  </div>;
+}
+
+function StudyEngine() {
+  const [mode, setMode] = useState("flashcards");
+  const [topic, setTopic] = useState("all");
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState(0);
+  const [marks, setMarks] = useState({});
+  const filtered = useMemo(() => questions.filter(q => {
+    const matchesTopic = topic === "all" || q.topicKey === topic;
+    const text = (q.stem + " " + q.correctSummary + " " + q.cue).toLowerCase();
+    return matchesTopic && text.includes(query.toLowerCase());
+  }), [topic, query]);
+  const current = filtered.length ? filtered[Math.min(index, filtered.length - 1)] : null;
+  const knownCount = Object.values(marks).filter(x => x === "known").length;
+  const reviewCount = Object.values(marks).filter(x => x === "review").length;
+  const special = questions.filter(q => q.type !== "mcq");
+
+  useEffect(() => { setIndex(0); }, [topic, query, mode]);
+
+  function mark(kind) {
+    if (!current) return;
+    setMarks({ ...marks, [current.n]: kind });
+    setIndex(Math.min(index + 1, Math.max(filtered.length - 1, 0)));
+  }
+
+  return <div>
+    <div className="grid gap-3 md:grid-cols-3">
+      <StatCard label="Đã lọc"><StatCardValue>{filtered.length}</StatCardValue><StatCardCaption>câu đang học</StatCardCaption></StatCard>
+      <StatCard label="Đã thuộc"><StatCardValue>{knownCount}</StatCardValue><StatCardCaption>đánh dấu trong phiên này</StatCardCaption></StatCard>
+      <StatCard label="Cần ôn lại"><StatCardValue>{reviewCount}</StatCardValue><StatCardCaption>ưu tiên quét lại cuối buổi</StatCardCaption></StatCard>
+    </div>
+
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <SegmentedControl value={mode} onValueChange={setMode} variant="rounded" size="small">
+        <SegmentedControlItem value="flashcards">Flashcards</SegmentedControlItem>
+        <SegmentedControlItem value="table">Bảng tra nhanh</SegmentedControlItem>
+        <SegmentedControlItem value="special">Yes/No + dropdown</SegmentedControlItem>
+      </SegmentedControl>
+      <SimpleSelect value={topic} onValueChange={setTopic} placeholder="Lọc theo topic" options={[{ value: "all", label: "Tất cả topic" }].concat(topicList.map(t => ({ value: t.key, label: t.count + " câu — " + t.vi })))} />
+      <div className="min-w-[220px] flex-1"><Input value={query} onValueChange={setQuery} placeholder="Tìm theo keyword: MCP, HIPAA, cache, eval…" /></div>
+    </div>
+
+    {mode === "flashcards" ? <div>
+      {current ? <div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <Text size={12} className="text-secondary">Câu {Math.min(index + 1, filtered.length)} / {filtered.length}</Text>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setIndex(Math.max(index - 1, 0))}>Trước</Button>
+            <Button variant="secondary" size="sm" onClick={() => setIndex(Math.min(index + 1, filtered.length - 1))}>Sau</Button>
+          </div>
+        </div>
+        <QuestionPracticeCard key={current.n} q={current} mode={mode} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" onClick={() => mark("known")}>Đã thuộc</Button>
+          <Button variant="warning-muted" size="sm" onClick={() => mark("review")}>Ôn lại</Button>
+        </div>
+      </div> : <BannerCard variant="info" title="Không có câu phù hợp">Xóa search hoặc chọn topic khác.</BannerCard>}
+    </div> : null}
+
+    {mode === "table" ? <Card className="mt-4"><CardContent>
+      <Table rowLines stickyHeader viewportClassName="max-h-[620px]" scrollOrientation="both">
+        <TableHeader><TableRow>
+          <TableHead>Q</TableHead><TableHead>Topic</TableHead><TableHead>Bối cảnh/trigger</TableHead><TableHead>Đáp án đúng</TableHead><TableHead>Nhớ nhanh / giải thích chi tiết</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>
+          {filtered.map(q => <TableRow key={q.n}>
+            <TableCell><Badge variant="purple">Q{q.n}</Badge></TableCell>
+            <TableCell>{q.topic}</TableCell>
+            <TableCell className="min-w-[200px] align-top"><GlossedText text={q.cue} size={13} className="text-primary" /><VocabChips texts={[q.stem, q.correctSummary]} /></TableCell>
+            <TableCell className="min-w-[360px] align-top"><Text size={13} weight="semibold" className="text-primary">{q.answerLabel}</Text><GlossedText text={q.correctSummary} size={13} className="text-primary mt-1" /></TableCell>
+            <TableCell className="min-w-[320px] align-top"><GlossedText text={q.memory} size={13} className="text-primary" /><ExplanationToggle q={q} /></TableCell>
+          </TableRow>)}
+        </TableBody>
+      </Table>
+    </CardContent></Card> : null}
+
+    {mode === "special" ? <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      {special.map(q => <div key={q.n}><QuestionPracticeCard q={q} mode="special" /></div>)}
+    </div> : null}
+  </div>;
+}
+
+function KeywordCheatSheet() {
+  const [openGroup, setOpenGroup] = useState(0);
+  return <div className="grid gap-4 md:grid-cols-[260px_1fr]">
+    <Card><CardContent><CardBody>
+      <Text size={13} weight="semibold" className="text-primary">Chọn cụm keyword</Text>
+      <div className="mt-3 space-y-2">
+        {keywordGroups.map((g, i) => <Button key={g.title} variant={openGroup === i ? "primary-accent" : "secondary"} size="sm" className="w-full justify-start" onClick={() => setOpenGroup(i)}>
+          {g.title}
+        </Button>)}
+      </div>
+    </CardBody></CardContent></Card>
+    <Card><CardContent><CardBody>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="blue">{keywordGroups[openGroup].rows.length} keyword</Badge>
+        <Text size={15} weight="semibold" className="text-primary">{keywordGroups[openGroup].title}</Text>
+      </div>
+      <Text as="div" size={12} className="text-secondary mt-2">Cách đọc bảng: cột trái là cụm tiếng Anh có thể xuất hiện trong đề, cột giữa là hướng chọn hoặc loại trừ. Cụm quan trọng có nghĩa tiếng Việt trong khung cam ngay dưới keyword.</Text>
+      <div className="mt-4 hidden md:grid md:grid-cols-[0.9fr_1.4fr_110px] gap-3 pb-2 border-b border-primary">
+        <Text size={12} weight="semibold" className="text-secondary">Thấy keyword trong đề</Text>
+        <Text size={12} weight="semibold" className="text-secondary">Hướng chọn/loại trừ</Text>
+        <Text size={12} weight="semibold" className="text-secondary">Câu</Text>
+      </div>
+      <div className="divide-y divide-primary">
+        {keywordGroups[openGroup].rows.map((r, i) => <div key={i} className="grid gap-1 py-3 md:grid-cols-[0.9fr_1.4fr_110px] md:gap-3">
+          <div><Text size={14} weight="medium" className="text-primary">{r[0]}</Text><VocabInline texts={[r[0]]} /></div>
+          <div><Text size={14} className="text-secondary">{r[1]}</Text><VocabInline texts={[r[1]]} /></div>
+          <Text size={12} className="text-secondary">{r[2]}</Text>
+        </div>)}
+      </div>
+    </CardBody></CardContent></Card>
+  </div>;
+}
+
+
+const exampleStopwords = new Set(["which", "what", "when", "where", "should", "would", "could", "answer", "correct", "solution", "select", "before", "after", "every", "only", "with", "without", "based", "using", "used", "must", "than", "then", "that", "this", "these", "those", "the", "and", "for", "from", "into", "are", "not", "can", "all", "any", "each", "part", "complete", "presents", "their", "your", "they", "them", "have", "has", "been", "being", "more", "most", "best", "whether"]);
+function exampleKeywords(q) {
+  const text = [q.correctSummary, q.memory].filter(Boolean).join(" ").toLowerCase();
+  return Array.from(new Set(text.replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter(w => w.length > 4 && !exampleStopwords.has(w))));
+}
+const exampleCueTerms = ["security", "privacy", "compliance", "regulated", "hipaa", "gdpr", "baa", "dpa", "audit", "credential", "restricted", "authorized", "role-based", "patient", "financial", "sla", "slo", "latency", "throughput", "availability", "error budget", "performance", "cost", "budget", "before", "after", "upstream", "first", "prior to", "sequence", "prerequisite", "experiment", "evaluation", "pilot", "rollout", "candidate", "baseline", "regression", "drift", "model version", "testing", "managed configuration", "project scope", "user scope", "command-line", "team", "individual", "organization", "human review", "oversight", "delegat", "risk", "high-impact", "low-confidence", "infeasible", "irreversible", "blast radius", "repeated", "static prefix", "cache", "exact identifier", "paraphrase", "structured filter", "dense", "sparse", "skill", "mcp", "direct api", "subagent", "agent loop", "deterministic", "stakeholder", "communication", "adr", "runbook", "postmortem", "implementation guide", "external", "finance", "refund", "high-volume", "classification", "controlled", "random assignment", "workload", "production"];
+function scoredExampleParts(q) {
+  const sentences = (q.stem || "").match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [q.stem || ""];
+  const keywords = exampleKeywords(q);
+  const vocabHits = vocabulary.filter(([term]) => (q.stem || "").toLowerCase().includes(term.toLowerCase()));
+  const scored = sentences.map(sentence => {
+    const lower = sentence.toLowerCase();
+    let score = 0;
+    if (vocabHits.some(([term]) => lower.includes(term.toLowerCase()))) score += 2;
+    exampleCueTerms.forEach(term => { if (lower.includes(term)) score += term.includes(" ") ? 1.5 : 1; });
+    keywords.forEach(word => { if (lower.includes(word)) score += word.length >= 8 ? 1.5 : 1; });
+    if (/^\s*(which|what|where|how)\b/i.test(sentence)) score -= 3.5;
+    return score;
+  });
+  const max = Math.max.apply(null, scored.concat([0]));
+  return sentences.map((sentence, index) => ({ sentence, hit: max > 0 && (scored[index] === max || scored[index] >= Math.max(2, max * 0.75)) }));
+}
+function ExampleStem({ q }) {
+  return <div className="flex-1 text-xs font-medium leading-relaxed text-primary">
+    {scoredExampleParts(q).map((part, index) => <span key={index} className={part.hit ? "rounded bg-tint-orange px-1" : ""}>{glossedParts(part.sentence)}</span>)}
+  </div>;
+}
+function formatEliminationReason(text) {
+  return (text || "").replace(/^([A-Z]|Statement \d+|Block \d+)\s+:\s*/, "$1 — ");
+}
+function ExampleAnswerGuide({ q }) {
+  return <div className="mt-3 space-y-2">
+    {q.explanation ? <div className="rounded-md border border-green bg-tint-green p-2">
+      <Text as="div" size={12} className="text-primary"><b>Cách chọn đáp án:</b> {q.explanation}</Text>
+    </div> : null}
+    {q.elim && q.elim.length ? <div className="rounded-md border border-primary bg-wash p-2">
+      <Text as="div" size={12} weight="semibold" className="text-primary">Loại trừ nhanh các phương án sai:</Text>
+      <div className="mt-1 space-y-1">
+        {q.elim.map((reason, index) => <Text as="div" size={12} className="text-secondary" key={index}>• {formatEliminationReason(reason)}</Text>)}
+      </div>
+    </div> : null}
+  </div>;
+}
+
+function QuestionExamples({ nums }) {
+  const examples = nums.map(n => questions.find(q => q.n === n)).filter(Boolean);
+  const notes = {
+    "52,58": "Q52 cho thấy yêu cầu bảo mật về network boundary phải được kiểm tra trước lợi ích giảm maintenance hay cost. Q58 cho thấy HIPAA/BAA là điều kiện tuân thủ bắt buộc, không phải tính năng tối ưu thêm vào sau.",
+    "4,78": "Q4 giúp phân biệt managed/project/user scope. Q78 cho thấy Skill chỉ chứa quy trình nội dung; quyền truy cập và audit vẫn phải nằm ở application layer.",
+    "39,108": "Q39 yêu cầu định nghĩa workload/profile trước khi test model. Q108 yêu cầu metric và sample size trước khi chạy experiment.",
+    "38,105": "Q38 và Q105 cùng cho thấy dữ liệu bị giới hạn quyền phải bị chặn trước retrieval/prompt. Lọc sau khi dữ liệu đã vào context là quá muộn.",
+    "51,99": "Q51 cho thấy không được kết luận rủi ro thấp chỉ vì refund nhỏ. Q99 cho thấy human review nên tập trung vào output rủi ro cao/low-confidence thay vì review toàn bộ.",
+    "85,100": "Q85 cho thấy SLA phải đo được bằng metric/threshold/window. Q100 cho thấy cấu hình HIPAA cần BAA, Zero Data Retention và audit logging.",
+    "56,108": "Cả hai câu đều hỏi phải chuẩn bị gì trước khi chạy evaluation/experiment. Đáp án đúng là bước specification/chuẩn bị, không phải bước chạy hay phân tích sau đó.",
+    "4,77": "Q4 là thứ tự ưu tiên của configuration scopes. Q77 là mô hình governance cho Skills khi rollout cho nhiều teams.",
+    "72,81": "Q72 là regression sau prompt update. Q81 là silent quality drift sau model-version change; cả hai cần reference set ổn định và score theo version.",
+    "3,20": "Q3 có trigger rất rõ: phần prompt lặp lại thì dùng prompt caching. Q20 là dạng mapping cố định nên học theo keyword của từng corpus type.",
+    "51,105": "Q51 minh họa lỗi dùng proxy sai để đánh giá rủi ro. Q105 minh họa lỗi để credential hoặc restricted data lọt vào prompt/context.",
+    "93,38": "Q93 là mapping retrieval rất trực diện: dense/sparse/structured. Q38 là trigger RBAC/role-restricted nên phải kiểm tra quyền trước retrieval.",
+    "12,20": "Q12 là dạng Yes/No: chấm từng claim độc lập. Q20 là dạng dropdown: map từng strategy vào đúng loại corpus.",
+    "1,37": "Q1 là tín hiệu cần quay lại lifecycle design khi kiến trúc hiện tại không đáp ứng requirement. Q37 là các bước cố định/dự đoán được nên chọn deterministic workflow.",
+    "9,113": "Q9 và Q113 đều là stakeholder communication: mở đầu bằng decision/business impact, sau đó trả lời concern theo từng audience.",
+    "4,25": "Q4 là thứ tự ưu tiên của scope. Q25 là quản lý tool/context bằng progressive discovery thay vì load toàn bộ tools.",
+    "3,93": "Q3 là prompt caching cho repeated prefix. Q93 là chọn retrieval mode theo loại keyword: intent/identifier/filter.",
+    "38,58": "Q38 là kiểm tra quyền trước retrieval. Q58 là các ràng buộc HIPAA/privacy trong pipeline xử lý patient data.",
+    "21,101": "Q21 là ADR để ghi lại architectural decision. Q101 là runbook vận hành gồm triage, escalation và rollback."
+  };
+  const note = notes[nums.join(",")];
+  if (!examples.length) return null;
+  return <CollapsibleRoot className="mt-2">
+    <CollapsibleTrigger caretPosition="left" className="text-xs font-medium text-blue">Xem ví dụ từ đề ({examples.map(q => "Q" + q.n).join(", ")})</CollapsibleTrigger>
+    <CollapsiblePanel className="mt-2 space-y-2">
+      {note ? <div className="rounded-md border border-blue bg-tint-blue p-2"><Text size={12} className="text-primary"><b>Vì sao ví dụ này liên quan:</b> {note}</Text></div> : null}
+      <div className="rounded-md border border-orange bg-tint-orange p-2"><Text size={12} className="text-primary"><b>Phần bôi cam</b> là chỗ nhận biết trong câu hỏi.</Text></div>
+      {examples.map(q => <div key={q.n} className="rounded-md border border-primary bg-elevated p-3">
+        <div className="flex flex-wrap items-start gap-2"><Badge variant="purple">Q{q.n}</Badge><ExampleStem q={q} /></div>
+        <VocabChips texts={[q.stem, q.correctSummary, q.memory]} />
+        <Text as="div" size={12} className="text-secondary mt-2"><b>Đáp án đúng:</b> {q.answerLabel} — {q.correctSummary}</Text>
+        <GlossedText text={q.memory} size={12} className="text-primary mt-2" />
+        <ExampleAnswerGuide q={q} />
+      </div>)}
+    </CollapsiblePanel>
+  </CollapsibleRoot>;
+}
+
+function PatternPanel() {
+  const rules = [
+    ["Ưu tiên điều kiện bắt buộc trước", "Nếu câu hỏi nhắc SLA (cam kết vận hành), security (bảo mật) hoặc compliance (tuân thủ luật/chính sách), hãy xem đó là yêu cầu bắt buộc. Bước 1: loại mọi đáp án vi phạm yêu cầu đó. Bước 2: trong các đáp án còn lại, mới so sánh chi phí, tốc độ hoặc chất lượng.", [52, 58]],
+    ["Xác định đúng phạm vi và đúng tầng", "Trước tiên xác định đề đang nói về cấu hình cá nhân, cấu hình chung của team/repo, hay cấu hình do tổ chức khóa. Sau đó chọn đúng tầng: Skill chứa quy trình/hướng dẫn, MCP kết nối hệ thống bên ngoài, còn quyền truy cập và audit phải nằm ở application layer.", [4, 78]],
+    ["Định nghĩa cách đo trước khi chạy", "Nếu đề nói BEFORE/trước khi pilot, evaluation hoặc experiment, đáp án thường là bước chuẩn bị: chọn metric (chỉ số đo), dataset (dữ liệu test), slice (nhóm dữ liệu cần tách riêng), owner (người chịu trách nhiệm) và baseline (mức hiện tại để so sánh). Đáp án nào nhảy thẳng vào chạy hoặc kết luận mà chưa định nghĩa cách đo thì thường sai.", [39, 108]],
+    ["Chặn dữ liệu nhạy cảm trước khi model nhìn thấy", "Với restricted data (dữ liệu bị giới hạn quyền), phải kiểm tra quyền trước retrieval/prompt/model. Nếu đáp án chỉ lọc sau khi model đã nhìn thấy dữ liệu thì là quá muộn, vì dữ liệu đã lọt vào context hoặc log.", [38, 105]],
+    ["Con người giữ quyết định rủi ro cao", "Nếu hành động có tác động lớn, khó hoàn tác, thuộc lĩnh vực regulated (bị luật kiểm soát) hoặc model không chắc, cần human review/escalation. Không được kết luận rủi ro thấp chỉ vì số tiền nhỏ hay thay đổi ít dòng.", [51, 99]]
+  ];
+  const checks = [
+    ["1. Đề có nhắc SLA, security hoặc compliance không? Nếu có, đây là điều kiện bắt buộc và phải kiểm tra trước mọi lợi ích khác.", [85, 100]],
+    ["2. Đề đang hỏi trước hay sau một bước? Chọn đúng trình tự: chuẩn bị trước, chạy sau, phân tích và kết luận cuối cùng.", [56, 108]],
+    ["3. Chủ thể là ai và ở tầng nào: cá nhân, team repo, managed org, Skill, MCP hay application layer?", [4, 77]],
+    ["4. Đáp án có đo và kiểm chứng được không: metric, dataset, reference set, logging hoặc audit?", [72, 81]],
+    ["5. Nếu hành động sai thì thiệt hại lan bao xa và có hoàn tác được không? Rủi ro cao thì cần human accountability.", [51, 99]]
+  ];
+  return <div className="grid gap-4 lg:grid-cols-2">
+    <Card><CardContent><CardBody>
+      <Text as="div" size={15} weight="semibold" className="text-primary">5 quy tắc chọn đáp án — đọc trước</Text>
+      <div className="mt-4 space-y-3">
+        {rules.map((r, i) => <div key={i} className="rounded-lg border border-primary bg-wash p-3">
+          <div className="flex items-center gap-2"><Badge variant="orange">{i + 1}</Badge><Text size={14} weight="semibold" className="text-primary">{r[0]}</Text></div>
+          <Text as="div" size={13} className="text-secondary mt-2">{r[1]}</Text>
+          <QuestionExamples nums={r[2]} />
+        </div>)}
+      </div>
+    </CardBody></CardContent></Card>
+    <Card><CardContent><CardBody>
+      <Text as="div" size={15} weight="semibold" className="text-primary">Khi phân vân, tự hỏi đúng 5 câu này</Text>
+      <div className="mt-4 space-y-3">
+        {checks.map((c, i) => <div key={i} className="rounded-lg border border-primary bg-wash p-3">
+          <Text size={13} className="text-primary">{c[0]}</Text>
+          <QuestionExamples nums={c[1]} />
+        </div>)}
+      </div>
+      <Text as="div" size={12} className="text-secondary mt-4">Nếu vẫn hòa, mới dùng pattern thống kê bên dưới. Pattern chỉ để phá hòa, không thay thế việc hiểu câu hỏi.</Text>
+    </CardBody></CardContent></Card>
+  </div>;
+}
+
+function ExamPlaybook() {
+  const groups = [
+    ["Mẹo học nhanh", "orange", [
+      "Học theo vòng lặp ngắn: (1) đọc keyword/từ khóa nhận biết, (2) nhìn đáp án đúng, (3) nhớ một cụm ngắn, (4) làm lại quiz. Lượt đầu không cần đọc hết giải thích dài.",
+      "Với mỗi câu chỉ cần nhớ một cặp “dấu hiệu trong đề → cách trả lời”. Ví dụ thấy repeated static prefix (phần đầu prompt lặp lại y nguyên) thì nghĩ đến prompt caching.",
+      "Ưu tiên học 9 câu Yes/No và dropdown vì sequence/mapping của chúng cố định, dễ lấy điểm nhanh hơn các câu tình huống dài.",
+      "Với câu select-two, học cả cặp đáp án như một cụm. Đừng học từng option riêng lẻ vì đề thường yêu cầu hai phần bổ sung cho nhau.",
+      "Cuối buổi chỉ ôn lại các câu đã bấm “Ôn lại”. Không cố nhồi lại toàn bộ 113 câu trong một lượt."
+    ]],
+    ["Mẹo loại trừ đáp án", "blue", [
+      "Loại đáp án vi phạm điều kiện bắt buộc như security (bảo mật), compliance (tuân thủ), SLA (cam kết vận hành), privacy (quyền riêng tư) hoặc least privilege (chỉ cấp quyền tối thiểu), kể cả khi đáp án đó rẻ hơn hay nhanh hơn.",
+      "Loại đáp án chỉ xử lý sau khi dữ liệu nhạy cảm đã lộ. Ví dụ chỉ lọc dữ liệu bị giới hạn quyền sau khi output đã được tạo là quá muộn, vì model đã nhìn thấy dữ liệu.",
+      "Loại đáp án chỉ có một lớp bảo vệ khi vấn đề cần defense-in-depth (nhiều lớp phòng thủ): ngăn từ trước, kiểm tra lúc hệ thống chạy và ghi log/audit.",
+      "Loại đáp án chọn model chỉ vì newest/most capable (mới nhất/mạnh nhất) nếu chưa có workload profile (hồ sơ workload thật) hoặc representative evaluation (đánh giá trên dữ liệu đại diện). Mới nhất/mạnh nhất không bằng phù hợp nhất.",
+      "Loại đáp án nhét deterministic business logic (logic có một kết quả đúng cố định) vào prompt; loại logic này phải nằm trong code/tool để kiểm soát và test được.",
+      "Loại đáp án dùng số tiền nhỏ, số dòng ít hoặc UI nhỏ để kết luận low-risk. Phải xem tác động, khả năng hoàn tác và blast radius (phạm vi thiệt hại nếu sai).",
+      "Loại đáp án hứa không có trade-off (không phải đánh đổi gì), không cần monitoring (giám sát) hoặc không cần regression testing (test lại sau thay đổi). Kiến trúc thật luôn có đánh đổi và kiểm soát.",
+      "Loại đáp án nói chung chung, không nói ai chịu trách nhiệm, áp dụng ở đâu, bằng cơ chế nào hoặc đo bằng chỉ số nào."
+    ]],
+    ["Mẹo keyword trong đề", "purple", [
+      "before / prerequisite / phase (trước khi/điều kiện tiên quyết/giai đoạn) → chọn bước chuẩn bị phải hoàn thành trước, không chọn hành động chạy sau.",
+      "security-critical / cannot override / org-wide → ưu tiên cấu hình tập trung do tổ chức khóa, không chọn tiện lợi cá nhân.",
+      "team-shared / repo / version-controlled → project scope (cấu hình chung của repo/team). personal preference → user scope (cấu hình cá nhân).",
+      "repeated static prefix / same document nhiều lần → prompt caching. dynamic retrieval/history → cắt bớt hoặc chọn lại context thay đổi.",
+      "paraphrase/semantic → dense retrieval (tìm theo ý nghĩa). exact identifier/rare token → sparse retrieval (tìm đúng từ/mã hiếm). filter/aggregate → structured query (truy vấn có cấu trúc).",
+      "representative / production population / silent drift → cần slice đại diện production, reference set ổn định và score theo model version.",
+      "retrieved content/user input instructs model → xem đó là untrusted input và nghĩ đến prompt-injection defense.",
+      "executive/stakeholder/steering committee → nói decision, business impact và trade-off trước; technical detail để sau."
+    ]],
+    ["Mẹo theo dạng câu", "success", [
+      "MCQ một đáp án: chọn đáp án nói rõ ai làm, ở tầng nào, bằng cơ chế nào. Đáp án chỉ đúng một nửa thường là bẫy.",
+      "Select-two: tìm hai đáp án bổ sung cho nhau để hoàn thành solution, ví dụ measure + enforce, prevention + detection, hoặc config + operations.",
+      "Yes/No: chấm từng statement độc lập. Một statement đúng không kéo các statement còn lại thành đúng.",
+      "Dropdown: đọc category trước rồi map từng dòng. Tìm từ khóa phân biệt như hierarchy, record, stage hoặc lifecycle.",
+      "Nếu không chắc: ưu tiên đáp án đo được, enforce được, theo least-privilege và giữ human accountability ở quyết định rủi ro cao."
+    ]]
+  ];
+  const groupExamples = [
+    [3, 20],
+    [51, 105],
+    [93, 38],
+    [12, 20]
+  ];
+  const topicTips = [
+    ["A — Lifecycle", "Nếu core contract hoặc component responsibility thay đổi thì phải quay lại design. Với câu hỏi trước/sau, nhớ bước chuẩn bị hoặc tài liệu/cấu hình nào phải tồn tại trước."],
+    ["B — Business/stakeholder", "Xác định audience trước: executive cần decision/business/trade-off, engineering cần implementation detail, security reviewer cần threat/control/residual risk."],
+    ["C — Claude Code/MCP/Skills", "Luôn hỏi scope nào, layer nào và quyền tối thiểu nào. Skill không phải live external system; MCP không thay permission boundary của application."],
+    ["D — RAG/prompt/cost", "Cache phần prompt ổn định, cắt bớt phần context thay đổi, route model theo workload và chọn retrieval đúng loại query."],
+    ["E — Security/compliance", "Điều kiện bắt buộc đứng trước ROI. Kiểm tra quyền trước retrieval, giữ secret server-side, HIPAA/GDPR cần contract và audit."],
+    ["F — Evaluation/observability", "Metric/dataset/slice phải có trước khi chạy evaluation. Regression cần reference set ổn định; observability cần correlation ID và model version."],
+    ["G — Human/ethics", "Không đo rủi ro chỉ bằng tiền hay số dòng. Quyết định high-impact/khó hoàn tác cần human approval hoặc escalation."],
+    ["H — Docs/runbook/handoff", "Decision lâu dài dùng ADR. Vận hành dùng runbook. Handoff cần contracts, evaluation artifacts (kết quả/test đánh giá), runbooks và limitations."]
+  ];
+  const topicExamples = [
+    [1, 37], [9, 113], [4, 25], [3, 93], [38, 58], [72, 81], [51, 99], [21, 101]
+  ];
+  return <div className="mt-4 space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2">
+      {groups.map((g, gi) => <Card key={gi}><CardContent><CardBody>
+        <div className="flex items-center gap-2"><Badge variant={g[1]}>{gi + 1}</Badge><Text size={15} weight="semibold" className="text-primary">{g[0]}</Text></div>
+        <div className="mt-4 space-y-2">
+          {g[2].map((tip, i) => <div key={i} className="rounded-md border border-primary bg-wash p-3">
+            <Text size={13} className="text-primary">{tip}</Text>
+          </div>)}
+        </div>
+        <QuestionExamples nums={groupExamples[gi]} />
+      </CardBody></CardContent></Card>)}
+    </div>
+    <Card><CardContent><CardBody>
+      <Text as="div" size={15} weight="semibold" className="text-primary">Mẹo bao phủ 8 topic trong đề</Text>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {topicTips.map((t, i) => <div key={i} className="rounded-md border border-primary bg-wash p-3">
+          <Text size={13} weight="semibold" className="text-primary">{t[0]}</Text>
+          <Text as="div" size={12} className="text-secondary mt-1">{t[1]}</Text>
+          <QuestionExamples nums={topicExamples[i]} />
+        </div>)}
+      </div>
+    </CardBody></CardContent></Card>
+  </div>;
+}
+
+
+function Report() {
+  return <PageLayout title="CCAR-P fast study pack" subtitle="113 câu practice được chia theo chủ đề, có mẹo nhớ, pattern đáp án, flashcard và bảng tra nhanh." themeToggle={true}>
+    <div className="max-w-[1180px] mx-auto pb-10">
+      <div className="rounded-xl border border-primary bg-elevated p-5">
+        <Text as="div" size={17} weight="semibold" className="text-primary">CCAR-P fast study pack — học 113 câu theo kiểu “thấy dấu hiệu → biết cách chọn”</Text>
+        <Text as="div" size={13} className="text-secondary mt-2">Câu hỏi giữ nguyên tiếng Anh để quen đề, nhưng các cụm quan trọng được highlight màu cam và có nghĩa tiếng Việt ngay bên dưới. Người yếu tiếng Anh nên học theo thứ tự: đọc keyword được dịch → nhìn đáp án đúng → học cụm nhớ ngắn → chỉ mở giải thích chi tiết khi cần.</Text>
+      </div>
+
+      <Card className="mt-4"><CardContent><CardBody>
+        <Text size={15} weight="semibold" className="text-primary">Cách đọc nếu tiếng Anh yếu</Text>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">1</Badge><Text as="div" size={13} className="text-primary mt-2">Đừng đọc toàn bộ câu trước. Tìm cụm màu cam và đọc nghĩa tiếng Việt ngay dưới câu.</Text></div>
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">2</Badge><Text as="div" size={13} className="text-primary mt-2">Nhìn phần “Đáp án” và “Nhớ cụm đáp án”; đây là phần quan trọng nhất để nhớ lại nhanh.</Text></div>
+          <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">3</Badge><Text as="div" size={13} className="text-primary mt-2">Chỉ mở “giải thích chi tiết” khi chưa hiểu vì sao đúng; không cần đọc hết trong lượt đầu.</Text></div>
+        </div>
+      </CardBody></CardContent></Card>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <StatCard label="Tổng số câu"><StatCardValue>113</StatCardValue><StatCardCaption>toàn bộ bank hiện có</StatCardCaption></StatCard>
+        <StatCard label="Topic"><StatCardValue>8</StatCardValue><StatCardCaption>gom theo architectural competency</StatCardCaption></StatCard>
+        <StatCard label="Select-two"><StatCardValue>45</StatCardValue><StatCardCaption>câu MCQ cần đúng cặp bổ sung</StatCardCaption></StatCard>
+        <StatCard label="Pass mark"><StatCardValue>70%</StatCardValue><StatCardCaption>mục tiêu tối thiểu</StatCardCaption></StatCard>
+      </div>
+
+      <SectionTitle sub="Làm đúng thứ tự này để học nhanh thay vì đọc lan man.">Lộ trình 45 phút</SectionTitle>
+      <Card><CardContent><CardBody>
+        <div className="grid gap-3 md:grid-cols-5">
+          {speedPlan.map((p, i) => <div key={i} className="rounded-lg border border-primary bg-wash p-3">
+            <Badge variant="blue">{p[0]}</Badge>
+            <Text size={12} className="text-primary mt-2">{p[1]}</Text>
+          </div>)}
+        </div>
+      </CardBody></CardContent></Card>
+
+      <SectionTitle sub="Đọc phần này trước khi học từng câu: trước hết là rule chọn đáp án, sau đó mới đến pattern thống kê khi phân vân.">Mẹo làm bài + pattern đáp án — đọc trước khi học câu</SectionTitle>
+      <PatternPanel />
+      <ExamPlaybook />
+
+      <Card className="mt-4"><CardContent><CardBody>
+        <Text as="div" size={15} weight="semibold" className="text-primary">Pattern thống kê — chỉ dùng khi phân vân</Text>
+        <Text as="div" size={12} className="text-secondary mt-1">Mỗi card có 2 phần: con số thật trong bank 113 câu, và cách dùng khi làm bài. Không phải quy luật chung của kỳ thi.</Text>
+        <div className="mt-4 space-y-3">
+          {answerPatternRows.map((r, i) => <div key={i} className="rounded-lg border border-primary bg-wash p-4">
+            <div className="flex flex-wrap items-center gap-2"><Badge variant="blue">{i + 1}</Badge><Text size={14} weight="semibold" className="text-primary">{r[0]}</Text></div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-md border border-primary bg-elevated p-3">
+                <Text size={12} weight="semibold" className="text-secondary">Con số trong bank</Text>
+                <Text as="div" size={13} className="text-primary mt-1">{r[1]}</Text>
+              </div>
+              <div className="rounded-md border border-primary bg-elevated p-3">
+                <Text size={12} weight="semibold" className="text-secondary">Cách dùng khi làm bài</Text>
+                <Text as="div" size={13} className="text-primary mt-1">{r[2]}</Text>
+              </div>
+            </div>
+          </div>)}
+        </div>
+      </CardBody></CardContent></Card>
+
+      <SectionTitle sub="Học mantra của từng nhóm trước; phần lớn câu hỏi chỉ là biến thể của các rule này.">Cheat-sheet theo chủ đề</SectionTitle>
+      <TopicCheatSheet />
+
+      <SectionTitle sub="Từ vựng tối thiểu để không bị choáng khi đọc câu hỏi tiếng Anh.">Từ điển nhanh cho người yếu tiếng Anh</SectionTitle>
+      <VocabCheatSheet />
+
+      <SectionTitle sub="Bảng tổng hợp theo kiểu “thấy keyword → nghĩ ngay hướng trả lời”. Các cụm tiếng Anh quan trọng có kèm nghĩa tiếng Việt.">Keyword tổng hợp để nhớ nhanh</SectionTitle>
+      <KeywordCheatSheet />
+
+
+      <SectionTitle sub="Flashcard để luyện nhớ nhanh; bảng tra nhanh để ôn lại; tab Yes/No + dropdown tập trung vào 9 câu có mapping cố định, dễ lấy điểm.">Study engine</SectionTitle>
+      <StudyEngine />
+
+      <Footnote>Nguồn: bộ practice CCAR-P 113 câu do session trước trích xuất. Các thống kê pattern chỉ phản ánh question bank này; khi thi thật vẫn phải ưu tiên điều kiện bắt buộc, bằng chứng trong câu hỏi và phán đoán kiến trúc.</Footnote>
+    </div>
+  </PageLayout>;
+}
+
+render(<Report />);
+</script>

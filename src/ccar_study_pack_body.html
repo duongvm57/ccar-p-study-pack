@@ -198,7 +198,7 @@ const answerPatternRows = [
 ];
 
 const speedPlan = [
-  ["0–10 phút", "Đọc cheat-sheet 8 topic và các mẹo làm bài để biết khung tư duy trước. Chưa cần đọc từng câu."],
+  ["0–10 phút", "Đọc Bẫy đáp án trước để biết option nào nên nghi ngờ ngay, sau đó đọc cheat-sheet 8 topic. Chưa cần đọc từng câu."],
   ["10–25 phút", "Làm Recognition drill tab “Nhớ cụm”. Nếu trong 2 giây không nhớ answer phrase thì bấm “Chưa khớp” ngay."],
   ["25–35 phút", "Mở tab “Quét option” để luyện match answer phrase vào MCQ; sau đó học Yes/No và dropdown vì sequence/mapping cố định."],
   ["35–45 phút", "Quét bảng tra nhanh: chỉ đọc câu đã bấm “ôn lại” và các câu select-two."],
@@ -1171,6 +1171,126 @@ function ExamPlaybook() {
 }
 
 
+const eliminationTricks = [
+  {
+    title: "“Model xịn hơn / deeper reasoning” cho mọi request",
+    scan: ["larger", "heaviest", "maximum reasoning", "extended thinking", "across all queries"],
+    rule: "Thường là bẫy. CCAR-P không thưởng cho model mạnh nhất; nó chọn model vừa đủ theo workload, latency, cost và evidence. Nếu đề nói high-volume, tight latency hoặc routine classification thì càng nên nghi ngờ option kéo model lên.",
+    traps: [
+      "Q86: Opus/maximum reasoning, Sonnet/larger general-purpose và Sonnet + extended thinking đều sai; Haiku đúng vì high-volume + tight latency.",
+      "Q18 D: switch every turn to the heaviest available model là sai vì phá per-turn latency SLO.",
+      "Q3 C: switch to smaller, faster model across all queries cũng sai — không được giải quyết cost bằng cách đổi model mù cho toàn bộ workload."
+    ],
+    nums: [86, 18, 3]
+  },
+  {
+    title: "“Disable / remove / bypass” toàn bộ control",
+    scan: ["disable", "entirely", "bypass", "unrestricted", "removing all"],
+    rule: "Trong bank này là bẫy rất mạnh: 13/13 option có “Disable” đều sai, 4/4 option có “bypass” đều sai. Kiến trúc đúng thường sửa đúng rule cụ thể, giữ least privilege và giữ audit/approval.",
+    traps: [
+      "Q33: disable permission system hoặc unrestricted Bash để bypass denial đều sai; đúng là inspect rule đang deny ở các scopes.",
+      "Q55: remove all safety restrictions/guardrails là sai; đúng là untrusted data + classifiers + scoped permissions + audit logging.",
+      "Q98: bypass human approval hoặc disable branch protection đều sai; human reviewer vẫn giữ approval."
+    ],
+    nums: [33, 55, 98]
+  },
+  {
+    title: "“Skip” evaluation/rationale/human review",
+    scan: ["skip", "without human review", "user-submitted complaints", "customer has contacted support"],
+    rule: "Thường sai vì đề thích artifact, metric, escalation hoặc approval trước khi hệ thống chạy/rủi ro xảy ra. Complaint của user là tín hiệu quá muộn, không phải control chính.",
+    traps: [
+      "Q81 C: skip evaluation sau model-version upgrade rồi dựa vào user complaints là sai; đúng là cùng adversarial evaluation set trước promotion.",
+      "Q32 B: chỉ escalate sau khi customer complain là sai; cần confidence threshold, high-impact category và ambiguity flags.",
+      "Q9 B: skip rationale/alternatives/trade-off khi trình bày architecture decision là sai."
+    ],
+    nums: [81, 32, 9]
+  },
+  {
+    title: "Phóng đại phạm vi: all / every / maximum / regardless",
+    scan: ["all", "every", "maximum", "regardless", "categorically"],
+    rule: "Mặc định nghi ngờ vì option thường thổi phồng phạm vi. Nhưng không auto-loại: nếu từ tuyệt đối bảo vệ compliance/privacy thì có thể đúng, ví dụ Q58 “patient data is never included…” khi chưa có BAA.",
+    traps: [
+      "Q25 C: load all 60 tool definitions on every request là sai; đúng là progressive tool discovery.",
+      "Q31 D: all four categories vì broader access categorically better là sai; đúng là chỉ categories map với defined tasks/hand-offs.",
+      "Q18 C: retrieval depth to corpus maximum regardless of latency là sai."
+    ],
+    nums: [25, 31, 18, 58]
+  },
+  {
+    title: "“Để model tự quyết / tự biết không dùng tool sai”",
+    scan: ["rely on the model", "model will intrinsically", "model decides", "decline tools"],
+    rule: "Thường sai vì behavior quan trọng phải được enforce bằng prompt rõ ràng, permission, classifier, workflow hoặc audit — không dựa vào model tự biết.",
+    traps: [
+      "Q19 A/D: thêm priority instruction hoặc để model tự quyết giữa instructions mâu thuẫn đều sai; phải remove/rewrite instruction mâu thuẫn.",
+      "Q34 C: allow every tool rồi rely on model to decline là sai; đúng là per-role allow-list.",
+      "Q55 A: trust model intrinsically reject bypass attempts là sai."
+    ],
+    nums: [19, 34, 55]
+  },
+  {
+    title: "Production write trực tiếp / không audit / không confirm",
+    scan: ["production database", "write directly", "without subagent scoping", "disable all logging and auditing"],
+    rule: "Thường sai nếu option cho phép write trực tiếp, mất audit trail hoặc không có confirmation gate. Đáp án đúng thường là read-only mặc định, tool list tối thiểu, explicit human confirmation khi modify data.",
+    traps: [
+      "Q23 A: write directly to production database without scoping/read-only/human confirmation là sai.",
+      "Q23 C: disable logging/auditing để giảm alert noise là sai.",
+      "Q23 D đúng vì có read-only credential + read-only operations + explicit human confirmation."
+    ],
+    nums: [23]
+  },
+  {
+    title: "Hành động cực đoan trước khi chẩn đoán",
+    scan: ["reinstall the operating system", "roll back to the previous", "disable the assistant immediately", "before any local reproduction"],
+    rule: "Thường sai trong câu troubleshooting. Thứ tự đúng là reproduce tối thiểu, thu evidence, inspect config/log/status rồi mới rollback/disable/replace.",
+    traps: [
+      "Q14: reinstall OS hoặc disable permission dialogs trước khi xác nhận first-run permission đều sai.",
+      "Q16: support ticket trước evidence hoặc rollback immediately đều sai; đúng là minimal reproduction + inspect MCP servers.",
+      "Q53 D/Q68 B: reinstall OS hoặc disable assistant ngay trước diagnostic analysis đều sai."
+    ],
+    nums: [14, 16, 53, 68]
+  },
+  {
+    title: "Một metric thắng hard constraint",
+    scan: ["solely", "cost reduction", "higher quality", "efficiency gains", "without additional analysis"],
+    rule: "Nếu đề có SLA/security/compliance thì cost, quality hay efficiency không được vượt qua constraint đó. Loại option chọn chỉ vì một metric hoặc hybrid cảm tính trước khi loại phương án vi phạm.",
+    traps: [
+      "Q47 A: chọn Architecture Y solely vì 50% cost reduction là sai.",
+      "Q47 B: chọn X vì quality cao rồi hy vọng fix SLA sau là sai.",
+      "Q47 D: hybrid without additional analysis cũng sai; đúng là eliminate X on SLA grounds trước."
+    ],
+    nums: [47]
+  }
+];
+
+function EliminationTricks() {
+  return <Card><CardContent><CardBody>
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="destructive">Mẹo loại đáp án</Badge>
+      <Text size={16} weight="semibold" className="text-primary">Bẫy đáp án — loại trước, không cần hiểu hết option</Text>
+    </div>
+    <Text as="div" size={13} className="text-secondary mt-2">Dùng khi scan options: thấy cụm trong cột cam thì nghi ngờ ngay. Đây không phải auto-loại 100%; nếu option đang bảo vệ SLA/security/compliance thì vẫn phải đọc kỹ hơn.</Text>
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      {eliminationTricks.map((t, i) => <div key={i} className="rounded-lg border border-primary bg-wash p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="destructive">Bẫy {i + 1}</Badge>
+          <Text size={14} weight="semibold" className="text-primary">{t.title}</Text>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {t.scan.map((s, j) => <Badge key={j} variant="orange">{s}</Badge>)}
+        </div>
+        <Text as="div" size={13} className="text-primary mt-3">{t.rule}</Text>
+        <div className="mt-3 rounded-md border border-red bg-tint-red p-3">
+          <Text size={12} weight="semibold" className="text-primary">Ví dụ bẫy thật trong bank</Text>
+          <div className="mt-2 space-y-1">
+            {t.traps.map((x, j) => <Text as="div" size={12} className="text-secondary" key={j}>• {x}</Text>)}
+          </div>
+        </div>
+        <QuestionExamples nums={t.nums} />
+      </div>)}
+    </div>
+  </CardBody></CardContent></Card>;
+}
+
 function Report() {
   return <PageLayout title="CCAR-P fast study pack" subtitle="113 câu practice theo recognition-first: scan keyword, nhớ exact answer phrase, match option; vẫn giữ quiz, ví dụ và giải thích tiếng Việt." themeToggle={true}>
     <div className="max-w-[1180px] mx-auto pb-10">
@@ -1194,6 +1314,10 @@ function Report() {
           <div className="rounded-md border border-primary bg-wash p-3"><Badge variant="orange">C</Badge><Text as="div" size={13} className="text-primary mt-2">Chỉ mở giải thích chi tiết khi hai options cùng chứa concept và cần phân biệt boundary.</Text></div>
         </div>
       </CardBody></CardContent></Card>
+
+      <div className="mt-4">
+        <EliminationTricks />
+      </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <StatCard label="Tổng số câu"><StatCardValue>113</StatCardValue><StatCardCaption>toàn bộ bank hiện có</StatCardCaption></StatCard>
